@@ -76,8 +76,18 @@ def create_app():
 
     @app.get("/")
     def dashboard():
-        return render_template("index.html")
+        view = request.args.get("view", "dashboard")
 
+        if view == "management":
+            return render_template(
+                "management.html",
+                active_view="management"
+            )
+
+        return render_template(
+            "dashboard.html",
+            active_view="dashboard"
+        )
     @app.errorhandler(RuntimeError)
     def handle_configuration_error(error):
         app.logger.warning(

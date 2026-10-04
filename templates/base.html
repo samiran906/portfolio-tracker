@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>{% block title %}Portfolio Tracker{% endblock %}</title>
+
+    <link
+        rel="icon"
+        type="image/svg+xml"
+        href="{{ url_for('static', filename='favicon.svg') }}"
+    >
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='css/style.css') }}"
+    >
+
+    {% block head %}{% endblock %}
+</head>
+
+<body>
+
+    <header class="topbar">
+
+        <div class="brand">
+            <div class="brand-mark">₹</div>
+
+            <div>
+                <h1>Portfolio Tracker</h1>
+                <p>Investment Portfolio Dashboard</p>
+            </div>
+        </div>
+
+
+        <nav class="main-nav" aria-label="Main navigation">
+
+            <a
+                href="{{ url_for('dashboard') }}"
+                class="nav-button {% if active_view == 'dashboard' %}active{% endif %}"
+            >
+                Dashboard
+            </a>
+
+            <a
+                href="{{ url_for('dashboard', view='management') }}"
+                class="nav-button {% if active_view == 'management' %}active{% endif %}"
+            >
+                Management
+            </a>
+
+        </nav>
+
+
+        <div class="header-meta">
+
+            <div>
+                <span class="meta-label">Valuation Date</span>
+                <strong id="valuation-date">—</strong>
+            </div>
+
+            <div class="status-pill" id="status">
+                <span class="status-dot"></span>Loading
+            </div>
+
+        </div>
+
+    </header>
+
+
+    <main class="container">
+
+        <div id="error-message" class="error-message hidden"></div>
+
+        {% block content %}
+        {% endblock %}
+
+        <footer class="footer">
+            <span>Portfolio Tracker</span>
+            <span>Read-only reporting dashboard</span>
+        </footer>
+
+    </main>
+
+
+    {% block scripts %}
+    {% endblock %}
+
+</body>
+</html>

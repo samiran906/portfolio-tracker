@@ -63,39 +63,3 @@ function setStatus(text,state){const s=document.getElementById("status");s.class
 function emptyRow(cols,msg){return`<tr><td colspan="${cols}" class="muted">${escapeHtml(msg)}</td></tr>`}
 function escapeHtml(v){return String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;")}
 document.addEventListener("DOMContentLoaded",loadDashboard);
-function setupNavigation() {
-    const buttons = document.querySelectorAll(".nav-button");
-    const dashboardView = document.getElementById("dashboard-view");
-    const managementView = document.getElementById("management-view");
-
-    function showView(viewName) {
-        const isManagement = viewName === "management";
-
-        dashboardView.classList.toggle("hidden", isManagement);
-        managementView.classList.toggle("hidden", !isManagement);
-
-        buttons.forEach(button => {
-            button.classList.toggle(
-                "active",
-                button.dataset.view === viewName
-            );
-        });
-
-        const url = new URL(window.location.href);
-        url.searchParams.set("view", viewName);
-        window.history.replaceState({}, "", url);
-    }
-
-    buttons.forEach(button => {
-        button.addEventListener("click", function () {
-            showView(this.dataset.view);
-        });
-    });
-
-    const initialView =
-        new URLSearchParams(window.location.search).get("view") || "dashboard";
-
-    showView(initialView === "management" ? "management" : "dashboard");
-}
-
-document.addEventListener("DOMContentLoaded", setupNavigation);
