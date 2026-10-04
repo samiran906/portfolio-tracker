@@ -7,152 +7,278 @@
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
+
 <body>
+
     <header class="topbar">
+
         <div class="brand">
             <div class="brand-mark">₹</div>
+
             <div>
                 <h1>Portfolio Tracker</h1>
                 <p>Investment Portfolio Dashboard</p>
             </div>
         </div>
+
+        <nav class="main-nav" aria-label="Main navigation">
+            <button type="button" class="nav-button active" data-view="dashboard">
+                Dashboard
+            </button>
+
+            <button type="button" class="nav-button" data-view="management">
+                Management
+            </button>
+        </nav>
+
         <div class="header-meta">
             <div>
                 <span class="meta-label">Valuation Date</span>
                 <strong id="valuation-date">—</strong>
             </div>
+
             <div class="status-pill" id="status">
                 <span class="status-dot"></span>Loading
             </div>
         </div>
+
     </header>
 
+
     <main class="container">
+
         <div id="error-message" class="error-message hidden"></div>
 
-        <section class="summary-grid">
-            <article class="summary-card primary-card">
-                <span class="card-label">Portfolio Value</span>
-                <strong id="portfolio-value">—</strong>
-                <span class="card-subtext">Total portfolio including cash</span>
-            </article>
-            <article class="summary-card">
-                <span class="card-label">Invested Cost</span>
-                <strong id="cost-value">—</strong>
-                <span class="card-subtext">Cost basis</span>
-            </article>
-            <article class="summary-card">
-                <span class="card-label">Securities</span>
-                <strong id="securities-value">—</strong>
-                <span class="card-subtext">Current market value</span>
-            </article>
-            <article class="summary-card">
-                <span class="card-label">Cash</span>
-                <strong id="cash-value">—</strong>
-                <span class="card-subtext">Available account cash</span>
-            </article>
-            <article class="summary-card">
-                <span class="card-label">Unrealized P&amp;L</span>
-                <strong id="pnl-value">—</strong>
-                <span class="card-subtext" id="pnl-percent">—</span>
-            </article>
-            <article class="summary-card">
-                <span class="card-label">Portfolio XIRR</span>
-                <strong id="xirr-value">—</strong>
-                <span class="card-subtext">Annualized return</span>
-            </article>
-        </section>
 
-        <section class="section">
-            <div class="section-header">
-                <div>
-                    <h2>Accounts</h2>
-                    <p>Portfolio value by account</p>
-                </div>
-            </div>
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Account</th><th>Portfolio Value</th><th>Securities</th>
-                            <th>Cash</th><th>P&amp;L</th><th>P&amp;L %</th><th>XIRR</th>
-                        </tr>
-                    </thead>
-                    <tbody id="accounts-body"></tbody>
-                </table>
-            </div>
-        </section>
+        <!-- =========================================================
+             DASHBOARD VIEW
+             ========================================================= -->
 
-        <div class="two-column">
-            <section class="section">
-                <div class="section-header">
-                    <div>
-                        <h2>Classifications</h2>
-                        <p>Allocation by asset classification</p>
-                    </div>
-                </div>
-                <div class="table-wrap">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Classification</th><th>Value</th><th>P&amp;L</th>
-                                <th>P&amp;L %</th><th>XIRR</th>
-                            </tr>
-                        </thead>
-                        <tbody id="classifications-body"></tbody>
-                    </table>
-                </div>
+        <div id="dashboard-view" class="view">
+
+            <section class="summary-grid">
+
+                <article class="summary-card primary-card">
+                    <span class="card-label">Portfolio Value</span>
+                    <strong id="portfolio-value">—</strong>
+                    <span class="card-subtext">
+                        Total portfolio including cash
+                    </span>
+                </article>
+
+                <article class="summary-card">
+                    <span class="card-label">Invested Cost</span>
+                    <strong id="cost-value">—</strong>
+                    <span class="card-subtext">
+                        Cost basis
+                    </span>
+                </article>
+
+                <article class="summary-card">
+                    <span class="card-label">Securities</span>
+                    <strong id="securities-value">—</strong>
+                    <span class="card-subtext">
+                        Current market value
+                    </span>
+                </article>
+
+                <article class="summary-card">
+                    <span class="card-label">Cash</span>
+                    <strong id="cash-value">—</strong>
+                    <span class="card-subtext">
+                        Available account cash
+                    </span>
+                </article>
+
+                <article class="summary-card">
+                    <span class="card-label">Unrealized P&amp;L</span>
+                    <strong id="pnl-value">—</strong>
+                    <span class="card-subtext" id="pnl-percent">—</span>
+                </article>
+
+                <article class="summary-card">
+                    <span class="card-label">Portfolio XIRR</span>
+                    <strong id="xirr-value">—</strong>
+                    <span class="card-subtext">
+                        Annualized return
+                    </span>
+                </article>
+
             </section>
 
+
             <section class="section">
+
                 <div class="section-header">
                     <div>
-                        <h2>Portfolio Groups</h2>
-                        <p>High-level investment groups</p>
+                        <h2>Accounts</h2>
+                        <p>Portfolio value by account</p>
                     </div>
                 </div>
+
                 <div class="table-wrap">
                     <table>
+
                         <thead>
                             <tr>
-                                <th>Group</th><th>Value</th><th>P&amp;L</th>
-                                <th>P&amp;L %</th><th>XIRR</th>
+                                <th>Account</th>
+                                <th>Portfolio Value</th>
+                                <th>Securities</th>
+                                <th>Cash</th>
+                                <th>P&amp;L</th>
+                                <th>P&amp;L %</th>
+                                <th>XIRR</th>
                             </tr>
                         </thead>
-                        <tbody id="groups-body"></tbody>
+
+                        <tbody id="accounts-body"></tbody>
+
                     </table>
                 </div>
+
             </section>
+
+
+            <div class="two-column">
+
+                <section class="section">
+
+                    <div class="section-header">
+                        <div>
+                            <h2>Classifications</h2>
+                            <p>Allocation by asset classification</p>
+                        </div>
+                    </div>
+
+                    <div class="table-wrap">
+                        <table>
+
+                            <thead>
+                                <tr>
+                                    <th>Classification</th>
+                                    <th>Value</th>
+                                    <th>P&amp;L</th>
+                                    <th>P&amp;L %</th>
+                                    <th>XIRR</th>
+                                </tr>
+                            </thead>
+
+                            <tbody id="classifications-body"></tbody>
+
+                        </table>
+                    </div>
+
+                </section>
+
+
+                <section class="section">
+
+                    <div class="section-header">
+                        <div>
+                            <h2>Portfolio Groups</h2>
+                            <p>High-level investment groups</p>
+                        </div>
+                    </div>
+
+                    <div class="table-wrap">
+                        <table>
+
+                            <thead>
+                                <tr>
+                                    <th>Group</th>
+                                    <th>Value</th>
+                                    <th>P&amp;L</th>
+                                    <th>P&amp;L %</th>
+                                    <th>XIRR</th>
+                                </tr>
+                            </thead>
+
+                            <tbody id="groups-body"></tbody>
+
+                        </table>
+                    </div>
+
+                </section>
+
+            </div>
+
+
+            <section class="section holdings-section">
+
+                <div class="section-header">
+                    <div>
+                        <h2>Holdings</h2>
+                        <p>Current securities held across the portfolio</p>
+                    </div>
+
+                    <span class="record-count" id="holdings-count">—</span>
+                </div>
+
+                <div class="table-wrap">
+                    <table>
+
+                        <thead>
+                            <tr>
+                                <th>Security</th>
+                                <th>Account</th>
+                                <th>Quantity</th>
+                                <th>Average Cost</th>
+                                <th>Current Price</th>
+                                <th>Current Value</th>
+                                <th>P&amp;L</th>
+                                <th>P&amp;L %</th>
+                                <th>XIRR</th>
+                            </tr>
+                        </thead>
+
+                        <tbody id="holdings-body"></tbody>
+
+                    </table>
+                </div>
+
+            </section>
+
         </div>
 
-        <section class="section holdings-section">
-            <div class="section-header">
-                <div>
-                    <h2>Holdings</h2>
-                    <p>Current securities held across the portfolio</p>
+
+        <!-- =========================================================
+             MANAGEMENT VIEW
+             ========================================================= -->
+
+        <section id="management-view" class="view hidden">
+
+            <div class="section">
+
+                <div class="section-header">
+                    <div>
+                        <h2>Management</h2>
+                        <p>
+                            Manage portfolio accounts and investment classifications
+                        </p>
+                    </div>
                 </div>
-                <span class="record-count" id="holdings-count">—</span>
+
+                <div class="management-placeholder">
+                    <p>Management tools will appear here.</p>
+                </div>
+
             </div>
-            <div class="table-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Security</th><th>Account</th><th>Quantity</th>
-                            <th>Average Cost</th><th>Current Price</th><th>Current Value</th>
-                            <th>P&amp;L</th><th>P&amp;L %</th><th>XIRR</th>
-                        </tr>
-                    </thead>
-                    <tbody id="holdings-body"></tbody>
-                </table>
-            </div>
+
         </section>
+
 
         <footer class="footer">
             <span>Portfolio Tracker</span>
             <span>Read-only reporting dashboard</span>
         </footer>
+
     </main>
 
-    <script data-cfasync="false" src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+
+    <script
+        data-cfasync="false"
+        src="{{ url_for('static', filename='js/dashboard.js') }}">
+    </script>
+
 </body>
 </html>
