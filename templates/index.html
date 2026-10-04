@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portfolio Tracker</title>
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body>
+
+    <header class="topbar">
+        <div>
+            <h1>Portfolio Tracker</h1>
+            <p>Investment Portfolio Dashboard</p>
+        </div>
+
+        <div class="valuation-info">
+            <span>Valuation Date</span>
+            <strong id="valuation-date">—</strong>
+        </div>
+    </header>
+
+    <main class="container">
+
+        <section class="summary-grid">
+
+            <div class="summary-card">
+                <span class="card-label">Portfolio Value</span>
+                <strong id="portfolio-value">—</strong>
+            </div>
+
+            <div class="summary-card">
+                <span class="card-label">Securities</span>
+                <strong id="securities-value">—</strong>
+            </div>
+
+            <div class="summary-card">
+                <span class="card-label">Cash</span>
+                <strong id="cash-value">—</strong>
+            </div>
+
+            <div class="summary-card">
+                <span class="card-label">Invested Cost</span>
+                <strong id="cost-value">—</strong>
+            </div>
+
+            <div class="summary-card">
+                <span class="card-label">Unrealized P&amp;L</span>
+                <strong id="pnl-value">—</strong>
+            </div>
+
+            <div class="summary-card">
+                <span class="card-label">P&amp;L %</span>
+                <strong id="pnl-percent">—</strong>
+            </div>
+
+            <div class="summary-card">
+                <span class="card-label">Portfolio XIRR</span>
+                <strong id="xirr-value">—</strong>
+            </div>
+
+        </section>
+
+        <section class="section">
+            <div class="section-header">
+                <h2>Portfolio Overview</h2>
+                <span id="status">Loading...</span>
+            </div>
+
+            <div id="error-message" class="error-message hidden"></div>
+        </section>
+
+    </main>
+
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+
+</body>
+</html>
