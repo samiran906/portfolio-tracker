@@ -1,11 +1,11 @@
-"""Read-only Flask API for the portfolio tracker reporting layer."""
+"""Flask API for the portfolio tracker reporting and management layer."""
 
 from datetime import date, datetime
 from decimal import Decimal
 import logging
 import os
 
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request
 from psycopg import Error as PsycopgError
 from psycopg import connect
 from psycopg.rows import dict_row
@@ -53,10 +53,23 @@ def _fetch_all(sql):
             return cursor.fetchall()
 
 
-def _fetch_one(sql):
-    rows = _fetch_all(sql)
-    return rows[0] if rows else None
+def _fetch_one(sql, params=None):
+    with connect(
+        _database_url(),
+        row_factory=dict_row
+    ) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params or ())
+            return cursor.fetchone()
 
+def _execute(sql, params=None):
+    with connect(
+        _database_url(),
+        row_factory=dict_row
+    ) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params or ())
+            return cursor.fetchone()
 
 def create_app():
     app = Flask(__name__)
@@ -136,6 +149,445 @@ def create_app():
             _json_safe(row or {})
         )
 
+    @app.put("/api/manage/accounts/<int:account_id>")
+    def update_account(account_id):
+        data = request.get_json(silent=True) or {}
+
+        name = data.get("name")
+        account_type = data.get("account_type")
+        base_currency = data.get("base_currency")
+        account_role = data.get("account_role")
+        is_active = data.get("is_active")
+
+        if (
+            not name
+            or not account_type
+            or not base_currency
+            or not account_role
+            or is_active is None
+        ):
+            return jsonify({
+                "error": (
+                    "name, account_type, base_currency, "
+                    "account_role, and is_active are required"
+                )
+            }), 400
+
+        if account_role not in ("PORTFOLIO", "BALANCE_ONLY"):
+            return jsonify({
+                "error": "account_role must be PORTFOLIO or BALANCE_ONLY"
+            }), 400
+
+        if not isinstance(base_currency, str) or len(base_currency) != 3:
+            return jsonify({
+                "error": "base_currency must be a 3-letter currency code"
+            }), 400
+
+        if not isinstance(is_active, bool):
+            return jsonify({
+                "error": "is_active must be true or false"
+            }), 400
+
+        try:
+            row = _execute(
+                """
+                UPDATE accounts
+                SET
+                    name = %s,
+                    account_type = %s,
+                    base_currency = %s,
+                    account_role = %s,
+                    is_active = %s,
+                    updated_at = NOW()
+                WHERE id = %s
+                RETURNING
+                    id,
+                    name,
+                    account_type,
+                    base_currency,
+                    is_active,
+                    account_role,
+                    created_at,
+                    updated_at;
+                """,
+                (
+                    name.strip(),
+                    account_type.strip(),
+                    base_currency.upper(),
+                    account_role,
+                    is_active,
+                    account_id,
+                ),
+            )
+
+            if row is None:
+                return jsonify({
+                    "error": "account not found"
+                }), 404
+
+            return jsonify(_json_safe(row))
+
+        except PsycopgError as error:
+            app.logger.exception("Failed to update account")
+
+            if getattr(error, "sqlstate", None) == "23505":
+                return jsonify({
+                    "error": "An account with this name already exists"
+                }), 409
+
+            return jsonify({
+                "error": "unable to update account"
+            }), 400
+
+    @app.get("/api/manage/classifications")
+    def manage_classifications():
+        try:
+            rows = _fetch_all(
+                """
+                SELECT
+                    id,
+                    name,
+                    parent_id,
+                    description,
+                    is_active,
+                    created_at
+                FROM classifications
+                ORDER BY name;
+                """
+            )
+
+            return jsonify(_json_safe(rows))
+
+        except PsycopgError:
+            app.logger.exception("Failed to fetch classifications")
+            return jsonify({
+                "error": "unable to fetch classifications"
+            }), 500
+
+    @app.post("/api/manage/classifications")
+    def create_classification():
+        data = request.get_json(silent=True) or {}
+
+        name = data.get("name")
+        parent_id = data.get("parent_id")
+        description = data.get("description")
+
+        if not name:
+            return jsonify({
+                "error": "name is required"
+            }), 400
+
+        name = name.strip()
+
+        if not name:
+            return jsonify({
+                "error": "name is required"
+            }), 400
+
+        if parent_id is not None:
+            try:
+                parent_id = int(parent_id)
+            except (TypeError, ValueError):
+                return jsonify({
+                    "error": "parent_id must be an integer or null"
+                }), 400
+
+            if parent_id <= 0:
+                return jsonify({
+                    "error": "parent_id must be a positive integer or null"
+                }), 400
+
+            parent = _fetch_one(
+                """
+                SELECT id
+                FROM classifications
+                WHERE id = %s;
+                """,
+                (parent_id,),
+            )
+
+            if parent is None:
+                return jsonify({
+                    "error": "parent classification not found"
+                }), 400
+
+        try:
+            row = _execute(
+                """
+                INSERT INTO classifications (
+                    name,
+                    parent_id,
+                    description,
+                    is_active
+                )
+                VALUES (%s, %s, %s, TRUE)
+                RETURNING
+                    id,
+                    name,
+                    parent_id,
+                    description,
+                    is_active,
+                    created_at;
+                """,
+                (
+                    name,
+                    parent_id,
+                    description.strip() if isinstance(description, str) else None,
+                ),
+            )
+
+            return jsonify(_json_safe(row)), 201
+
+        except PsycopgError as error:
+            app.logger.exception("Failed to create classification")
+
+            if getattr(error, "sqlstate", None) == "23505":
+                return jsonify({
+                    "error": "A classification with this name and parent already exists"
+                }), 409
+
+            if getattr(error, "sqlstate", None) == "23503":
+                return jsonify({
+                    "error": "parent classification not found"
+                }), 400
+
+            return jsonify({
+                "error": "unable to create classification"
+            }), 400
+
+    @app.put("/api/manage/classifications/<int:classification_id>")
+    def update_classification(classification_id):
+        data = request.get_json(silent=True) or {}
+
+        name = data.get("name")
+        parent_id = data.get("parent_id")
+        description = data.get("description")
+        is_active = data.get("is_active")
+
+        if (
+            not name
+            or is_active is None
+        ):
+            return jsonify({
+                "error": "name and is_active are required"
+            }), 400
+
+        name = name.strip()
+
+        if not name:
+            return jsonify({
+                "error": "name is required"
+            }), 400
+
+        if not isinstance(is_active, bool):
+            return jsonify({
+                "error": "is_active must be true or false"
+            }), 400
+
+        if parent_id is not None:
+            try:
+                parent_id = int(parent_id)
+            except (TypeError, ValueError):
+                return jsonify({
+                    "error": "parent_id must be an integer or null"
+                }), 400
+
+            if parent_id <= 0:
+                return jsonify({
+                    "error": "parent_id must be a positive integer or null"
+                }), 400
+
+            if parent_id == classification_id:
+                return jsonify({
+                    "error": "a classification cannot be its own parent"
+                }), 400
+
+            parent = _fetch_one(
+                """
+                SELECT id
+                FROM classifications
+                WHERE id = %s;
+                """,
+                (parent_id,),
+            )
+
+            if parent is None:
+                return jsonify({
+                    "error": "parent classification not found"
+                }), 400
+
+        try:
+            existing = _fetch_one(
+                """
+                SELECT id
+                FROM classifications
+                WHERE id = %s;
+                """,
+                (classification_id,),
+            )
+
+            if existing is None:
+                return jsonify({
+                    "error": "classification not found"
+                }), 404
+
+            if not is_active:
+                child = _fetch_one(
+                    """
+                    SELECT id
+                    FROM classifications
+                    WHERE parent_id = %s
+                    AND is_active = TRUE
+                    LIMIT 1;
+                    """,
+                    (classification_id,),
+                )
+
+                if child is not None:
+                    return jsonify({
+                        "error": (
+                            "cannot deactivate a classification "
+                            "while it has active child classifications"
+                        )
+                    }), 409
+
+            row = _execute(
+                """
+                UPDATE classifications
+                SET
+                    name = %s,
+                    parent_id = %s,
+                    description = %s,
+                    is_active = %s
+                WHERE id = %s
+                RETURNING
+                    id,
+                    name,
+                    parent_id,
+                    description,
+                    is_active,
+                    created_at;
+                """,
+                (
+                    name,
+                    parent_id,
+                    description.strip()
+                    if isinstance(description, str)
+                    else None,
+                    is_active,
+                    classification_id,
+                ),
+            )
+
+            return jsonify(_json_safe(row))
+
+        except PsycopgError as error:
+            app.logger.exception("Failed to update classification")
+
+            if getattr(error, "sqlstate", None) == "23505":
+                return jsonify({
+                    "error": (
+                        "A classification with this name and parent "
+                        "already exists"
+                    )
+                }), 409
+
+            if getattr(error, "sqlstate", None) == "23503":
+                return jsonify({
+                    "error": "parent classification not found"
+                }), 400
+
+            return jsonify({
+                "error": "unable to update classification"
+            }), 400
+
+    @app.get("/api/manage/accounts")
+    def manage_accounts():
+        rows = _fetch_all(
+            """
+            SELECT
+                id,
+                name,
+                account_type,
+                base_currency,
+                is_active,
+                account_role,
+                created_at,
+                updated_at
+            FROM accounts
+            ORDER BY name;
+            """
+        )
+
+        return jsonify(_json_safe(rows))
+
+    @app.post("/api/manage/accounts")
+    def create_account():
+        data = request.get_json(silent=True) or {}
+
+        name = data.get("name")
+        account_type = data.get("account_type")
+        base_currency = data.get("base_currency", "INR")
+        account_role = data.get("account_role")
+
+        if not name or not account_type or not account_role:
+            return jsonify({
+                "error": "name, account_type, and account_role are required"
+            }), 400
+
+        if account_role not in ("PORTFOLIO", "BALANCE_ONLY"):
+            return jsonify({
+                "error": "account_role must be PORTFOLIO or BALANCE_ONLY"
+            }), 400
+
+        if not isinstance(base_currency, str) or len(base_currency) != 3:
+            return jsonify({
+                "error": "base_currency must be a 3-letter currency code"
+            }), 400
+
+        try:
+            row = _execute(
+                """
+                INSERT INTO accounts (
+                    name,
+                    account_type,
+                    base_currency,
+                    is_active,
+                    account_role
+                )
+                VALUES (%s, %s, %s, TRUE, %s)
+                RETURNING
+                    id,
+                    name,
+                    account_type,
+                    base_currency,
+                    is_active,
+                    account_role,
+                    created_at,
+                    updated_at;
+                """,
+                (
+                    name.strip(),
+                    account_type.strip(),
+                    base_currency.upper(),
+                    account_role,
+                ),
+            )
+
+            return jsonify(_json_safe(row)), 201
+
+        except PsycopgError as error:
+            app.logger.exception("Failed to create account")
+
+            if getattr(error, "sqlstate", None) == "23505":
+                return jsonify({
+                    "error": "An account with this name already exists"
+                }), 409
+
+            return jsonify({
+                "error": "unable to create account"
+            }), 400
+        
     @app.get("/api/accounts")
     def accounts():
         rows = _fetch_all(
