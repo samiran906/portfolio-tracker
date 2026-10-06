@@ -14,8 +14,10 @@
 
     <link
         rel="stylesheet"
-        href="{{ url_for('static', filename='css/style.css') }}"
+        href="{{ url_for('static', filename='css/base.css') }}"
     >
+
+    {% block stylesheets %}{% endblock %}
 
     {% block head %}{% endblock %}
 </head>

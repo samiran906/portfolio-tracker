@@ -2,27 +2,310 @@
 
 {% block title %}Management - Portfolio Tracker{% endblock %}
 
+{% block stylesheets %}
+<link
+    rel="stylesheet"
+    href="{{ url_for('static', filename='css/management.css') }}"
+>
+{% endblock %}
+
 {% block content %}
 
-<section id="management-view" class="view">
+<section class="section">
+
+    <div class="section-header">
+        <div>
+            <h2>Management</h2>
+            <p>Manage portfolio accounts and investment classifications</p>
+        </div>
+    </div>
+
+</section>
+
+
+<section class="section">
+
+    <div class="section-header">
+        <div>
+            <h2>Accounts</h2>
+            <p>Manage bank accounts, brokers and other portfolio accounts</p>
+        </div>
+
+        <button type="button" class="primary-button" id="add-account-button">
+            Add Account
+        </button>
+    </div>
+
+
+    <div class="table-wrap">
+        <table>
+
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Currency</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+
+            <tbody id="management-accounts-body">
+                <tr>
+                    <td colspan="6" class="muted">
+                        Loading accounts...
+                    </td>
+                </tr>
+            </tbody>
+
+        </table>
+    </div>
+
+</section>
+
+
+<div id="account-form-container" class="management-form hidden">
 
     <div class="section">
 
         <div class="section-header">
             <div>
-                <h2>Management</h2>
-                <p>
-                    Manage portfolio accounts and investment classifications
-                </p>
+                <h2 id="account-form-title">Add Account</h2>
+                <p>Create or edit a portfolio account</p>
             </div>
         </div>
 
-        <div class="management-placeholder">
-            <p>Management tools will appear here.</p>
-        </div>
+
+        <form id="account-form">
+
+            <input type="hidden" id="account-id">
+
+
+            <div class="form-grid">
+
+                <div class="form-field">
+                    <label for="account-name">Name</label>
+                    <input
+                        type="text"
+                        id="account-name"
+                        maxlength="100"
+                        required
+                    >
+                </div>
+
+
+                <div class="form-field">
+                    <label for="account-type">Account Type</label>
+
+                    <select id="account-type" required>
+                        <option value="">Select type</option>
+                        <option value="BANK">Bank</option>
+                        <option value="BROKER">Broker</option>
+                        <option value="RETIREMENT">Retirement</option>
+                        <option value="OTHER">Other</option>
+                    </select>
+                </div>
+
+
+                <div class="form-field">
+                    <label for="account-currency">Base Currency</label>
+
+                    <input
+                        type="text"
+                        id="account-currency"
+                        value="INR"
+                        maxlength="3"
+                        required
+                    >
+                </div>
+
+
+                <div class="form-field">
+                    <label for="account-role">Portfolio Role</label>
+
+                    <select id="account-role" required>
+                        <option value="PORTFOLIO">Portfolio</option>
+                        <option value="BALANCE_ONLY">Balance Only</option>
+                    </select>
+                </div>
+
+            </div>
+
+
+            <div class="form-actions">
+
+                <button
+                    type="submit"
+                    class="primary-button"
+                    id="save-account-button"
+                >
+                    Save Account
+                </button>
+
+                <button
+                    type="button"
+                    class="secondary-button"
+                    id="cancel-account-button"
+                >
+                    Cancel
+                </button>
+
+            </div>
+
+        </form>
 
     </div>
 
+</div>
+<section class="section">
+
+    <div class="section-header">
+        <div>
+            <h2>Classifications</h2>
+            <p>Manage investment classification hierarchy</p>
+        </div>
+
+        <button
+            type="button"
+            class="primary-button"
+            id="add-classification-button"
+        >
+            Add Classification
+        </button>
+    </div>
+
+
+    <div class="table-wrap">
+        <table>
+
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Parent</th>
+                    <th>Description</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+
+            <tbody id="management-classifications-body">
+                <tr>
+                    <td colspan="5" class="muted">
+                        Loading classifications...
+                    </td>
+                </tr>
+            </tbody>
+
+        </table>
+    </div>
+
 </section>
+<div id="classification-form-container" class="management-form hidden">
+
+    <div class="section">
+
+        <div class="section-header">
+            <div>
+                <h2 id="classification-form-title">Add Classification</h2>
+                <p>Create or edit an investment classification</p>
+            </div>
+        </div>
+
+
+        <form id="classification-form">
+
+            <input
+                type="hidden"
+                id="classification-id"
+            >
+
+
+            <div class="form-grid">
+
+                <div class="form-field">
+
+                    <label for="classification-name">
+                        Name
+                    </label>
+
+                    <input
+                        type="text"
+                        id="classification-name"
+                        maxlength="100"
+                        required
+                    >
+
+                </div>
+
+
+                <div class="form-field">
+
+                    <label for="classification-parent">
+                        Parent Classification
+                    </label>
+
+                    <select id="classification-parent">
+
+                        <option value="">
+                            None — Top Level
+                        </option>
+
+                    </select>
+
+                </div>
+
+
+                <div class="form-field form-field-full">
+
+                    <label for="classification-description">
+                        Description
+                    </label>
+
+                    <textarea
+                        id="classification-description"
+                        rows="3"
+                        maxlength="500"
+                    ></textarea>
+
+                </div>
+
+            </div>
+
+
+            <div class="form-actions">
+
+                <button
+                    type="submit"
+                    class="primary-button"
+                    id="save-classification-button"
+                >
+                    Save Classification
+                </button>
+
+                <button
+                    type="button"
+                    class="secondary-button"
+                    id="cancel-classification-button"
+                >
+                    Cancel
+                </button>
+
+            </div>
+
+        </form>
+
+    </div>
+
+</div>
+{% endblock %}
+
+
+{% block scripts %}
+
+<script
+    data-cfasync="false"
+    src="{{ url_for('static', filename='js/management.js') }}">
+</script>
 
 {% endblock %}

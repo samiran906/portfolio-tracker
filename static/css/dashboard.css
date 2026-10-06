@@ -1,0 +1,86 @@
+/* =========================================================
+   Dashboard
+   ========================================================= */
+
+.summary-grid {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.summary-card {
+    min-height: 132px;
+    padding: 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+}
+
+.primary-card {
+    border-top: 3px solid var(--accent);
+}
+
+.summary-card strong {
+    display: block;
+    margin-top: 9px;
+    font-size: 24px;
+    line-height: 1.15;
+    font-weight: 650;
+    letter-spacing: -.025em;
+    overflow-wrap: anywhere;
+}
+
+.card-subtext {
+    display: block;
+    margin-top: 9px;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.two-column {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 22px;
+}
+
+.record-count {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.holdings-section {
+    margin-bottom: 22px;
+}
+
+@media(max-width:1250px) {
+
+    .summary-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media(max-width:900px) {
+
+    .two-column {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media(max-width:650px) {
+
+    .summary-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media(max-width:430px) {
+
+    .summary-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .summary-card {
+        min-height: auto;
+    }
+}

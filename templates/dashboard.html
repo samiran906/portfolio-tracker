@@ -2,6 +2,13 @@
 
 {% block title %}Dashboard - Portfolio Tracker{% endblock %}
 
+{% block stylesheets %}
+<link
+    rel="stylesheet"
+    href="{{ url_for('static', filename='css/dashboard.css') }}"
+>
+{% endblock %}
+
 {% block content %}
 
 <div id="dashboard-view" class="view">
