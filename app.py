@@ -636,25 +636,6 @@ def create_app():
             _json_safe(rows)
         )
 
-    @app.get("/api/portfolio-groups")
-    def portfolio_groups():
-        rows = _fetch_all(
-            """
-            SELECT
-                g.*,
-                gr.portfolio_group_xirr_percent
-            FROM portfolio_group_summary g
-            LEFT JOIN portfolio_group_return_summary gr
-                ON gr.portfolio_group_id = g.portfolio_group_id
-               AND gr.valuation_date = g.valuation_date
-            ORDER BY g.portfolio_group_name;
-            """
-        )
-
-        return jsonify(
-            _json_safe(rows)
-        )
-
     @app.get("/api/securities")
     def securities():
         rows = _fetch_all(
@@ -730,19 +711,6 @@ def create_app():
             """
         )
 
-        portfolio_groups = _fetch_all(
-            """
-            SELECT
-                g.*,
-                gr.portfolio_group_xirr_percent
-            FROM portfolio_group_summary g
-            LEFT JOIN portfolio_group_return_summary gr
-                ON gr.portfolio_group_id = g.portfolio_group_id
-               AND gr.valuation_date = g.valuation_date
-            ORDER BY g.total_securities_value DESC;
-            """
-        )
-
         securities = _fetch_all(
             """
             SELECT
@@ -762,7 +730,6 @@ def create_app():
                 "portfolio": portfolio,
                 "accounts": accounts,
                 "classifications": classifications,
-                "portfolio_groups": portfolio_groups,
                 "securities": securities
             })
         )

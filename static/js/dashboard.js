@@ -13,7 +13,6 @@ async function loadDashboard(){
         renderPortfolio(data.portfolio);
         renderAccounts(data.accounts||[]);
         renderClassifications(data.classifications||[]);
-        renderGroups(data.portfolio_groups||[]);
         renderHoldings(data.securities||[]);
         setStatus("Updated","success");
         errorMessage.classList.add("hidden");
@@ -42,10 +41,6 @@ function renderAccounts(rows){
 function renderClassifications(rows){
     const b=document.getElementById("classifications-body");
     b.innerHTML=rows.length?rows.map(a=>`<tr><td>${escapeHtml(a.classification_name)}</td><td>${formatCurrency(a.total_securities_value)}</td><td class="${valueClass(a.total_unrealized_pnl)}">${formatCurrency(a.total_unrealized_pnl)}</td><td class="${valueClass(a.unrealized_pnl_percent)}">${formatPercent(a.unrealized_pnl_percent)}</td><td>${formatPercent(a.classification_xirr_percent)}</td></tr>`).join(""):emptyRow(5,"No classification data available");
-}
-function renderGroups(rows){
-    const b=document.getElementById("groups-body");
-    b.innerHTML=rows.length?rows.map(a=>`<tr><td>${escapeHtml(a.portfolio_group_name)}</td><td>${formatCurrency(a.total_securities_value)}</td><td class="${valueClass(a.total_unrealized_pnl)}">${formatCurrency(a.total_unrealized_pnl)}</td><td class="${valueClass(a.unrealized_pnl_percent)}">${formatPercent(a.unrealized_pnl_percent)}</td><td>${formatPercent(a.portfolio_group_xirr_percent)}</td></tr>`).join(""):emptyRow(5,"No portfolio groups available");
 }
 function renderHoldings(rows){
     document.getElementById("holdings-count").textContent=`${rows.length} holding${rows.length===1?"":"s"}`;

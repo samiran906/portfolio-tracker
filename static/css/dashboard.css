@@ -38,12 +38,6 @@
     font-size: 12px;
 }
 
-.two-column {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 22px;
-}
-
 .record-count {
     color: var(--muted);
     font-size: 12px;
@@ -57,13 +51,6 @@
 
     .summary-grid {
         grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-}
-
-@media(max-width:900px) {
-
-    .two-column {
-        grid-template-columns: 1fr;
     }
 }
 
@@ -83,4 +70,23 @@
     .summary-card {
         min-height: auto;
     }
+}
+.classification-name {
+    width: 40%;
+}
+
+.classification-value {
+    width: 22%;
+}
+
+.classification-pnl {
+    width: 18%;
+}
+
+.classification-percent {
+    width: 10%;
+}
+
+.classification-xirr {
+    width: 10%;
 }
