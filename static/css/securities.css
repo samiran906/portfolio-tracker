@@ -1,0 +1,211 @@
+/* Securities page */
+
+.page-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.page-heading h2 {
+    margin: 0 0 0.35rem;
+}
+
+.page-heading p {
+    margin: 0;
+    color: var(--text-muted, #6b7280);
+}
+
+.securities-account-section {
+    margin-bottom: 1.25rem;
+    padding: 1.25rem;
+    border: 1px solid var(--border-color, #e5e7eb);
+    border-radius: 10px;
+    background: var(--card-background, #ffffff);
+}
+
+.securities-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+}
+
+.securities-toolbar h3 {
+    margin: 0 0 0.35rem;
+    font-size: 1.05rem;
+    font-weight: 600;
+}
+
+.securities-toolbar p {
+    margin: 0;
+    color: var(--text-muted, #6b7280);
+    font-size: 0.9rem;
+}
+
+.securities-account-section .table-wrap {
+    width: 100%;
+    overflow-x: auto;
+}
+
+.securities-account-section table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.securities-account-section th,
+.securities-account-section td {
+    padding: 0.8rem 0.65rem;
+    border-bottom: 1px solid var(--border-color, #e5e7eb);
+    text-align: left;
+    vertical-align: middle;
+}
+
+.securities-account-section th {
+    background: var(--table-header-background, #f8fafc);
+    color: var(--text-muted, #6b7280);
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+}
+
+.securities-account-section tbody tr:hover {
+    background: var(--table-hover-background, #f9fafb);
+}
+
+.securities-account-section tr:last-child td {
+    border-bottom: 0;
+}
+
+.securities-account-section td strong {
+    font-weight: 600;
+}
+
+.security-subtext {
+    margin-top: 0.2rem;
+    color: var(--text-muted, #6b7280);
+    font-size: 0.82rem;
+    font-weight: 400;
+}
+
+.securities-empty-state {
+    padding: 1rem 0;
+    color: var(--text-muted, #6b7280);
+}
+
+.securities-button {
+    flex-shrink: 0;
+    padding: 0.6rem 0.9rem;
+    border: 1px solid var(--border-color, #d1d5db);
+    border-radius: 6px;
+    background: var(--card-background, #ffffff);
+    color: var(--text-color, #1f2937);
+    font: inherit;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.securities-button:hover {
+    background: var(--table-hover-background, #f9fafb);
+    border-color: var(--focus-color, #2563eb);
+}
+
+.securities-button:focus-visible {
+    outline: 2px solid var(--focus-color, #2563eb);
+    outline-offset: 2px;
+}
+
+@media (max-width: 700px) {
+    .securities-account-section {
+        padding: 0.9rem;
+    }
+
+    .securities-toolbar {
+        align-items: flex-start;
+    }
+
+    .securities-account-section table {
+        min-width: 650px;
+    }
+}
+
+/* Security form */
+
+.securities-form-section {
+    margin-bottom: 1.5rem;
+}
+
+.securities-form-section .section-header {
+    margin-bottom: 1rem;
+}
+
+.securities-form-section .form-grid {
+    margin-bottom: 1.25rem;
+}
+
+.securities-form-section label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    font-weight: 600;
+    font-size: 0.9rem;
+}
+
+.securities-form-section input,
+.securities-form-section select {
+    width: 100%;
+    min-width: 0;
+    padding: 0.6rem 0.7rem;
+    border: 1px solid var(--border-color, #cbd5e1);
+    border-radius: 6px;
+    background: var(--card-background, #ffffff);
+    color: inherit;
+    font: inherit;
+    font-weight: 400;
+}
+
+.securities-form-section input:focus,
+.securities-form-section select:focus {
+    outline: 2px solid var(--focus-color, #2563eb);
+    outline-offset: 1px;
+}
+
+.securities-form-section input[readonly] {
+    background: var(--table-header-background, #f8fafc);
+    color: var(--text-muted, #64748b);
+}
+
+.securities-form-section .form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.security-form-error {
+    margin: 0.75rem 0 0;
+    color: #b91c1c;
+}
+
+#security-message {
+    margin: 0.75rem 0;
+}
+
+#security-message.error {
+    color: #b91c1c;
+}
+
+#security-message.success {
+    color: #15803d;
+}
+
+@media (max-width: 700px) {
+    .securities-form-section .form-grid {
+        grid-template-columns: 1fr;
+    }
+}

@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block title %}Securities | Portfolio Tracker{% endblock %}
+
+{% block stylesheets %}
+<link
+    rel="stylesheet"
+    href="{{ url_for('static', filename='css/management.css') }}"
+>
+<link
+    rel="stylesheet"
+    href="{{ url_for('static', filename='css/securities.css') }}"
+>
+{% endblock %}
+
+{% block content %}
+<section class="page-heading">
+    <div>
+        <h2>Securities</h2>
+        <p>Manage investment securities by account.</p>
+    </div>
+</section>
+
+<section class="securities-account-section" id="zerodha-section">
+    <div class="securities-toolbar">
+        <div>
+            <h3>Zerodha</h3>
+            <p>Indian stocks and ETFs · INR</p>
+        </div>
+        <button type="button" class="primary-button" data-account="Zerodha">
+            Add Security
+        </button>
+    </div>
+    <div id="zerodha-securities">Loading securities...</div>
+</section>
+
+<section class="securities-account-section" id="indmoney-section">
+    <div class="securities-toolbar">
+        <div>
+            <h3>INDmoney</h3>
+            <p>US stocks and ETFs · USD</p>
+        </div>
+        <button type="button" class="primary-button" data-account="INDmoney">
+            Add Security
+        </button>
+    </div>
+    <div id="indmoney-securities">Loading securities...</div>
+</section>
+
+<section class="securities-account-section" id="paytm-section">
+    <div class="securities-toolbar">
+        <div>
+            <h3>Paytm Money</h3>
+            <p>Indian mutual funds · INR</p>
+        </div>
+        <button type="button" class="primary-button" data-account="Paytm Money">
+            Add Security
+        </button>
+    </div>
+    <div id="paytm-securities">Loading securities...</div>
+</section>
+
+<div id="security-form-container"></div>
+<div id="security-message" role="status" aria-live="polite"></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/securities.js') }}"></script>
+{% endblock %}
