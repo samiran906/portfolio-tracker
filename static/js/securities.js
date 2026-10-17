@@ -87,12 +87,31 @@ function renderSecuritiesTable(securities, accountName) {
                     </span>
                 </td>
                 <td>
-                    <button type="button"
-                            class="secondary-button security-edit-button"
-                            data-edit-security="${escapeHtml(security.id)}"
-                            data-edit-account="${escapeHtml(accountName)}">
-                        Edit
-                    </button>
+                    <div class="security-actions">
+                        <button type="button"
+                                class="secondary-button security-edit-button"
+                                data-edit-security="${escapeHtml(security.id)}"
+                                data-edit-account="${escapeHtml(accountName)}">
+                            Edit
+                        </button>
+                        ${account?.is_active === true ? `
+                            <button type="button"
+                                    class="secondary-button security-deactivate-button"
+                                    data-deactivate-relationship="${escapeHtml(account.account_security_id)}"
+                                    data-deactivate-name="${escapeHtml(security.name)}"
+                                    data-deactivate-account="${escapeHtml(accountName)}">
+                                Deactivate
+                            </button>
+                        ` : `
+                            <button type="button"
+                                    class="secondary-button security-activate-button"
+                                    data-activate-relationship="${escapeHtml(account.account_security_id)}"
+                                    data-activate-name="${escapeHtml(security.name)}"
+                                    data-activate-account="${escapeHtml(accountName)}">
+                                Activate
+                            </button>
+                        `}
+                    </div>
                 </td>
             </tr>
         `;
@@ -160,6 +179,26 @@ async function loadSecurities() {
                     );
                 });
             });
+
+            container.querySelectorAll("[data-deactivate-relationship]").forEach(button => {
+                button.addEventListener("click", () => {
+                    deactivateSecurityRelationship(
+                        Number(button.dataset.deactivateRelationship),
+                        button.dataset.deactivateName,
+                        button.dataset.deactivateAccount
+                    );
+                });
+            });
+
+            container.querySelectorAll("[data-activate-relationship]").forEach(button => {
+                button.addEventListener("click", () => {
+                    activateSecurityRelationship(
+                        Number(button.dataset.activateRelationship),
+                        button.dataset.activateName,
+                        button.dataset.activateAccount
+                    );
+                });
+            });
         }
     } catch (error) {
         console.error(error);
@@ -167,6 +206,84 @@ async function loadSecurities() {
             container.textContent =
                 "Unable to load securities. Please refresh the page.";
         });
+    }
+}
+
+async function activateSecurityRelationship(
+    accountSecurityId,
+    securityName,
+    accountName
+) {
+    const confirmed = window.confirm(
+        `Reactivate ${securityName} in ${accountName}?`
+    );
+
+    if (!confirmed) {
+        return;
+    }
+
+    setSecurityMessage("");
+
+    try {
+        const response = await fetch(
+            `/api/manage/security-accounts/${accountSecurityId}/activate`,
+            { method: "POST" }
+        );
+
+        const result = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+            throw new Error(result.error || "Unable to activate this relationship.");
+        }
+
+        setSecurityMessage(
+            `${securityName} was reactivated in ${accountName}.`
+        );
+        await loadSecurities();
+    } catch (error) {
+        console.error(error);
+        setSecurityMessage(error.message, true);
+    }
+}
+
+async function deactivateSecurityRelationship(
+    accountSecurityId,
+    securityName,
+    accountName
+) {
+    const confirmed = window.confirm(
+        `Deactivate ${securityName} in ${accountName}?\\n\\n` +
+        "This will preserve its history. It cannot be undone from this action."
+    );
+
+    if (!confirmed) {
+        return;
+    }
+
+    setSecurityMessage("");
+
+    try {
+        const response = await fetch(
+            `/api/manage/security-accounts/${accountSecurityId}/deactivate`,
+            { method: "POST" }
+        );
+
+        const result = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+            throw new Error(result.error || "Unable to deactivate this relationship.");
+        }
+
+        setSecurityMessage(
+            result.security_auto_deactivated
+                ? `${securityName} was deactivated because it has no remaining active portfolio relationship.`
+                : `${securityName} was deactivated in ${accountName}.`
+        );
+
+        await loadSecurities();
+    } catch (error) {
+        console.error(error);
+        setSecurityMessage(error.message, true);
     }
 }
 

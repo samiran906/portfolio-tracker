@@ -209,3 +209,14 @@
         grid-template-columns: 1fr;
     }
 }
+.security-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.security-actions .secondary-button {
+    padding: 6px 10px;
+    font-size: 0.85rem;
+}

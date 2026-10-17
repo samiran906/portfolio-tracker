@@ -1160,6 +1160,31 @@ def create_app():
                             "message": "relationship is already inactive",
                         })
 
+                    # Use the running transaction calculation so corporate
+                    # actions such as splits are reflected in the quantity.
+                    cursor.execute(
+                        """
+                        SELECT quantity_held
+                        FROM account_security_transaction_calculations
+                        WHERE account_security_id = %s
+                        ORDER BY transaction_sequence DESC
+                        LIMIT 1;
+                        """,
+                        (account_security_id,),
+                    )
+                    holding = cursor.fetchone()
+
+                    if holding is not None and holding["quantity_held"] != 0:
+                        return jsonify({
+                            "error": (
+                                "Cannot deactivate this relationship while a "
+                                f"non-zero holding remains "
+                                f"({holding['quantity_held']} shares/units). "
+                                "Record the disposal or correct the transactions first."
+                            ),
+                            "quantity_held": str(holding["quantity_held"]),
+                        }), 409
+
                     cursor.execute(
                         """
                         UPDATE account_securities
@@ -1218,6 +1243,81 @@ def create_app():
             )
             return jsonify({
                 "error": "unable to deactivate account-security relationship"
+            }), 400
+
+    @app.post("/api/manage/security-accounts/<int:account_security_id>/activate")
+    def activate_security_account(account_security_id):
+        try:
+            with connect(_database_url(), row_factory=dict_row) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT
+                            ase.id AS account_security_id,
+                            ase.security_id,
+                            ase.is_active AS relationship_is_active,
+                            a.is_active AS account_is_active,
+                            a.account_role,
+                            s.is_active AS security_is_active
+                        FROM account_securities ase
+                        JOIN accounts a ON a.id = ase.account_id
+                        JOIN securities s ON s.id = ase.security_id
+                        WHERE ase.id = %s
+                        FOR UPDATE OF ase, s;
+                        """,
+                        (account_security_id,),
+                    )
+                    relationship = cursor.fetchone()
+
+                    if relationship is None:
+                        return jsonify({
+                            "error": "account-security relationship not found"
+                        }), 404
+
+                    if (
+                        not relationship["account_is_active"]
+                        or relationship["account_role"] != "PORTFOLIO"
+                    ):
+                        return jsonify({
+                            "error": (
+                                "An active portfolio account is required "
+                                "to activate this relationship."
+                            )
+                        }), 409
+
+                    cursor.execute(
+                        """
+                        UPDATE account_securities
+                        SET is_active = TRUE
+                        WHERE id = %s;
+                        """,
+                        (account_security_id,),
+                    )
+
+                    cursor.execute(
+                        """
+                        UPDATE securities
+                        SET is_active = TRUE,
+                            updated_at = NOW()
+                        WHERE id = %s;
+                        """,
+                        (relationship["security_id"],),
+                    )
+
+                    return jsonify({
+                        "account_security_id": account_security_id,
+                        "security_id": relationship["security_id"],
+                        "relationship_is_active": True,
+                        "security_is_active": True,
+                        "message": "Account-security relationship activated.",
+                    })
+
+        except PsycopgError:
+            app.logger.exception(
+                "Failed to activate account-security relationship"
+            )
+            return jsonify({
+                "error": "unable to activate account-security relationship"
             }), 400
 
     @app.get("/api/accounts")
