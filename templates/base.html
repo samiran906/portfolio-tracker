@@ -59,6 +59,13 @@
                 Securities
             </a>
 
+            <a
+                href="{{ url_for('dashboard', view='transactions') }}"
+                class="nav-button {% if active_view == 'transactions' %}active{% endif %}"
+            >
+                Transactions
+            </a>
+
         </nav>
 
 

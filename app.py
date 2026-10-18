@@ -90,6 +90,12 @@ def create_app():
                 active_view="securities"
             )
 
+        if view == "transactions":
+            return render_template(
+                "transactions.html",
+                active_view="transactions"
+            )
+
         return render_template(
             "dashboard.html",
             active_view="dashboard"
@@ -1318,6 +1324,591 @@ def create_app():
             )
             return jsonify({
                 "error": "unable to activate account-security relationship"
+            }), 400
+
+    @app.get("/api/manage/security-transactions")
+    def manage_security_transactions():
+        # Read-only transaction history with optional filters and pagination.
+        try:
+            account_id = request.args.get("account_id", type=int)
+            security_id = request.args.get("security_id", type=int)
+            transaction_type = request.args.get("transaction_type", "").strip().upper()
+
+            page = request.args.get("page", default=1, type=int)
+            page_size = request.args.get("page_size", default=25, type=int)
+
+            if page is None or page < 1:
+                return jsonify({"error": "page must be a positive integer"}), 400
+
+            if page_size is None or not 1 <= page_size <= 100:
+                return jsonify({
+                    "error": "page_size must be between 1 and 100"
+                }), 400
+
+            if account_id is not None and account_id <= 0:
+                return jsonify({"error": "account_id must be positive"}), 400
+
+            if security_id is not None and security_id <= 0:
+                return jsonify({"error": "security_id must be positive"}), 400
+
+            allowed_types = {"BUY", "SELL", "BONUS", "SPLIT"}
+            if transaction_type and transaction_type not in allowed_types:
+                return jsonify({
+                    "error": "transaction_type must be BUY, SELL, BONUS, or SPLIT"
+                }), 400
+
+            conditions = []
+            params = []
+
+            if account_id is not None:
+                conditions.append("a.id = %s")
+                params.append(account_id)
+
+            if security_id is not None:
+                conditions.append("s.id = %s")
+                params.append(security_id)
+
+            if transaction_type:
+                conditions.append("st.transaction_type = %s")
+                params.append(transaction_type)
+
+            where_clause = (
+                "WHERE " + " AND ".join(conditions)
+                if conditions else ""
+            )
+
+            offset = (page - 1) * page_size
+
+            with connect(
+                _database_url(),
+                row_factory=dict_row
+            ) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        f"""
+                SELECT
+                    st.id AS transaction_id,
+                    st.account_security_id,
+                    st.transaction_date,
+                    st.transaction_type,
+                    st.quantity,
+                    st.price,
+                    st.settlement_amount,
+                    st.currency,
+                    st.reference,
+                    st.notes,
+                    st.corporate_action_from,
+                    st.corporate_action_to,
+                    a.id AS account_id,
+                    a.name AS account_name,
+                    a.is_active AS account_is_active,
+                    s.id AS security_id,
+                    s.name AS security_name,
+                    s.symbol,
+                    s.instrument_type,
+                    s.is_active AS security_is_active,
+                    ase.is_active AS account_security_is_active,
+                    calc.transaction_sequence,
+                    calc.quantity_held,
+                    calc.cost_basis,
+                    calc.average_cost,
+                    COUNT(*) OVER() AS total_count
+                FROM security_transactions st
+                JOIN account_securities ase
+                    ON ase.id = st.account_security_id
+                JOIN accounts a
+                    ON a.id = ase.account_id
+                JOIN securities s
+                    ON s.id = ase.security_id
+                LEFT JOIN account_security_transaction_calculations calc
+                    ON calc.transaction_id = st.id
+                {where_clause}
+                ORDER BY st.transaction_date DESC, st.id DESC
+                LIMIT %s OFFSET %s;
+                        """,
+                        (*params, page_size, offset),
+                    )
+                    rows = cursor.fetchall()
+
+            total = int(rows[0]["total_count"]) if rows else 0
+
+            # The window count is metadata, not part of each transaction.
+            for row in rows:
+                row.pop("total_count", None)
+
+            return jsonify(_json_safe({
+                "items": rows,
+                "page": page,
+                "page_size": page_size,
+                "total": total,
+                "total_pages": (total + page_size - 1) // page_size,
+            }))
+
+        except PsycopgError:
+            app.logger.exception("Failed to fetch security transactions")
+            return jsonify({
+                "error": "unable to fetch security transactions"
+            }), 500
+
+    @app.post("/api/manage/security-transactions")
+    def create_security_transaction():
+        """Create a transaction and reject any resulting negative holding."""
+        from decimal import InvalidOperation
+
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({"error": "request body must be a JSON object"}), 400
+
+        def parse_decimal(field, required=True):
+            value = payload.get(field)
+            if value is None or value == "":
+                if required:
+                    raise ValueError(f"{field} is required")
+                return None
+            try:
+                number = Decimal(str(value))
+            except (InvalidOperation, ValueError):
+                raise ValueError(f"{field} must be a valid number")
+            if not number.is_finite():
+                raise ValueError(f"{field} must be a finite number")
+            return number
+
+        try:
+            account_security_id = payload.get("account_security_id")
+            if (
+                isinstance(account_security_id, bool)
+                or not isinstance(account_security_id, int)
+                or account_security_id <= 0
+            ):
+                raise ValueError("account_security_id must be a positive integer")
+
+            transaction_type = str(
+                payload.get("transaction_type", "")
+            ).strip().upper()
+
+            if transaction_type not in {"BUY", "SELL", "BONUS", "SPLIT"}:
+                raise ValueError(
+                    "transaction_type must be BUY, SELL, BONUS, or SPLIT"
+                )
+
+            raw_date = payload.get("transaction_date")
+            if not isinstance(raw_date, str) or not raw_date.strip():
+                raise ValueError("transaction_date is required")
+            try:
+                transaction_date = date.fromisoformat(raw_date.strip())
+            except ValueError:
+                raise ValueError("transaction_date must use YYYY-MM-DD format")
+
+            reference = payload.get("reference")
+            notes = payload.get("notes")
+
+            if reference is not None and not isinstance(reference, str):
+                raise ValueError("reference must be text or null")
+            if notes is not None and not isinstance(notes, str):
+                raise ValueError("notes must be text or null")
+
+            if transaction_type in {"BUY", "SELL"}:
+                quantity = parse_decimal("quantity")
+                price = parse_decimal("price")
+                settlement = parse_decimal("settlement_amount", required=False)
+
+                if quantity <= 0:
+                    raise ValueError("quantity must be greater than zero")
+                if price < 0:
+                    raise ValueError("price cannot be negative")
+                if settlement is None:
+                    settlement = quantity * price
+                if settlement < 0:
+                    raise ValueError("settlement_amount cannot be negative")
+
+                action_from = None
+                action_to = None
+            else:
+                quantity = None
+                price = None
+                settlement = None
+                action_from = parse_decimal("corporate_action_from")
+                action_to = parse_decimal("corporate_action_to")
+
+                if action_from <= 0 or action_to <= 0:
+                    raise ValueError(
+                        "corporate-action ratios must be greater than zero"
+                    )
+
+            with connect(
+                _database_url(),
+                row_factory=dict_row
+            ) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT
+                            ase.id,
+                            s.currency,
+                            a.account_role,
+                            a.is_active AS account_is_active,
+                            ase.is_active AS relationship_is_active,
+                            s.is_active AS security_is_active
+                        FROM account_securities ase
+                        JOIN accounts a ON a.id = ase.account_id
+                        JOIN securities s ON s.id = ase.security_id
+                        WHERE ase.id = %s
+                        FOR UPDATE OF ase
+                        """,
+                        (account_security_id,),
+                    )
+                    relationship = cursor.fetchone()
+
+                    if relationship is None:
+                        return jsonify({
+                            "error": "account-security relationship not found"
+                        }), 404
+
+                    if (
+                        not relationship["account_is_active"]
+                        or relationship["account_role"] != "PORTFOLIO"
+                        or not relationship["relationship_is_active"]
+                        or not relationship["security_is_active"]
+                    ):
+                        return jsonify({
+                            "error": (
+                                "new transactions require an active security "
+                                "and an active portfolio account relationship"
+                            )
+                        }), 409
+
+                    cursor.execute(
+                        """
+                        INSERT INTO security_transactions (
+                            account_security_id,
+                            transaction_date,
+                            transaction_type,
+                            quantity,
+                            price,
+                            settlement_amount,
+                            currency,
+                            reference,
+                            notes,
+                            corporate_action_from,
+                            corporate_action_to
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        RETURNING id
+                        """,
+                        (
+                            account_security_id,
+                            transaction_date,
+                            transaction_type,
+                            quantity,
+                            price,
+                            settlement,
+                            relationship["currency"],
+                            reference,
+                            notes,
+                            action_from,
+                            action_to,
+                        ),
+                    )
+                    transaction_id = cursor.fetchone()["id"]
+
+                    # Validate the entire timeline, not just the new row.
+                    cursor.execute(
+                        """
+                        SELECT
+                            transaction_id,
+                            transaction_date,
+                            transaction_type,
+                            quantity_held
+                        FROM account_security_transaction_calculations
+                        WHERE account_security_id = %s
+                          AND quantity_held < 0
+                        ORDER BY transaction_date, transaction_sequence
+                        LIMIT 1
+                        """,
+                        (account_security_id,),
+                    )
+                    invalid_row = cursor.fetchone()
+
+                    if invalid_row is not None:
+                        connection.rollback()
+                        return jsonify({
+                            "error": (
+                                "transaction rejected because it would cause "
+                                "negative holdings in the transaction history"
+                            ),
+                            "conflicting_transaction_date": (
+                                invalid_row["transaction_date"].isoformat()
+                            ),
+                            "conflicting_transaction_type": (
+                                invalid_row["transaction_type"]
+                            ),
+                        }), 409
+
+            return jsonify({
+                "message": "transaction created",
+                "transaction_id": transaction_id,
+            }), 201
+
+        except ValueError as error:
+            return jsonify({"error": str(error)}), 400
+        except PsycopgError:
+            app.logger.exception("Failed to create security transaction")
+            return jsonify({
+                "error": "unable to create security transaction"
+            }), 400
+
+
+    @app.put("/api/manage/security-transactions/<int:transaction_id>")
+    def update_security_transaction(transaction_id):
+        """Update a transaction and reject negative holdings anywhere in history."""
+        from decimal import InvalidOperation
+
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({"error": "request body must be a JSON object"}), 400
+
+        def parse_decimal(field, required=True):
+            value = payload.get(field)
+            if value is None or value == "":
+                if required:
+                    raise ValueError(f"{field} is required")
+                return None
+            try:
+                number = Decimal(str(value))
+            except (InvalidOperation, ValueError):
+                raise ValueError(f"{field} must be a valid number")
+            if not number.is_finite():
+                raise ValueError(f"{field} must be a finite number")
+            return number
+
+        try:
+            transaction_type = str(
+                payload.get("transaction_type", "")
+            ).strip().upper()
+            if transaction_type not in {"BUY", "SELL", "BONUS", "SPLIT"}:
+                raise ValueError(
+                    "transaction_type must be BUY, SELL, BONUS, or SPLIT"
+                )
+
+            raw_date = payload.get("transaction_date")
+            if not isinstance(raw_date, str) or not raw_date.strip():
+                raise ValueError("transaction_date is required")
+            try:
+                transaction_date = date.fromisoformat(raw_date.strip())
+            except ValueError:
+                raise ValueError("transaction_date must use YYYY-MM-DD format")
+
+            reference = payload.get("reference")
+            notes = payload.get("notes")
+            if reference is not None and not isinstance(reference, str):
+                raise ValueError("reference must be text or null")
+            if notes is not None and not isinstance(notes, str):
+                raise ValueError("notes must be text or null")
+            if reference is not None and len(reference) > 200:
+                raise ValueError("reference cannot exceed 200 characters")
+
+            if transaction_type in {"BUY", "SELL"}:
+                quantity = parse_decimal("quantity")
+                price = parse_decimal("price")
+                settlement = parse_decimal("settlement_amount", required=False)
+                if quantity <= 0:
+                    raise ValueError("quantity must be greater than zero")
+                if price < 0:
+                    raise ValueError("price cannot be negative")
+                if settlement is None:
+                    settlement = quantity * price
+                if settlement < 0:
+                    raise ValueError("settlement_amount cannot be negative")
+                action_from = None
+                action_to = None
+            else:
+                quantity = price = settlement = None
+                action_from = parse_decimal("corporate_action_from")
+                action_to = parse_decimal("corporate_action_to")
+                if action_from <= 0 or action_to <= 0:
+                    raise ValueError(
+                        "corporate-action ratios must be greater than zero"
+                    )
+
+            with connect(
+                _database_url(), row_factory=dict_row
+            ) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT
+                            st.id,
+                            st.account_security_id,
+                            ase.is_active AS relationship_is_active,
+                            a.is_active AS account_is_active,
+                            a.account_role,
+                            s.is_active AS security_is_active
+                        FROM security_transactions st
+                        JOIN account_securities ase
+                            ON ase.id = st.account_security_id
+                        JOIN accounts a ON a.id = ase.account_id
+                        JOIN securities s ON s.id = ase.security_id
+                        WHERE st.id = %s
+                        FOR UPDATE OF st, ase
+                        """,
+                        (transaction_id,),
+                    )
+                    existing = cursor.fetchone()
+
+                    if existing is None:
+                        return jsonify({"error": "transaction not found"}), 404
+
+                    if (
+                        not existing["account_is_active"]
+                        or existing["account_role"] != "PORTFOLIO"
+                    ):
+                        return jsonify({
+                            "error": "transaction account is not an active portfolio account"
+                        }), 409
+
+                    account_security_id = existing["account_security_id"]
+
+                    cursor.execute(
+                        """
+                        UPDATE security_transactions
+                        SET transaction_date = %s,
+                            transaction_type = %s,
+                            quantity = %s,
+                            price = %s,
+                            settlement_amount = %s,
+                            reference = %s,
+                            notes = %s,
+                            corporate_action_from = %s,
+                            corporate_action_to = %s
+                        WHERE id = %s
+                        """,
+                        (
+                            transaction_date, transaction_type, quantity,
+                            price, settlement, reference, notes,
+                            action_from, action_to, transaction_id,
+                        ),
+                    )
+
+                    cursor.execute(
+                        """
+                        SELECT transaction_id, transaction_date,
+                               transaction_type, quantity_held
+                        FROM account_security_transaction_calculations
+                        WHERE account_security_id = %s
+                          AND quantity_held < 0
+                        ORDER BY transaction_date, transaction_sequence
+                        LIMIT 1
+                        """,
+                        (account_security_id,),
+                    )
+                    invalid_row = cursor.fetchone()
+
+                    if invalid_row is not None:
+                        connection.rollback()
+                        return jsonify({
+                            "error": (
+                                "edit rejected because it would cause negative "
+                                "holdings in the transaction history"
+                            ),
+                            "conflicting_transaction_date":
+                                invalid_row["transaction_date"].isoformat(),
+                            "conflicting_transaction_type":
+                                invalid_row["transaction_type"],
+                        }), 409
+
+            return jsonify({
+                "message": "transaction updated",
+                "transaction_id": transaction_id,
+            }), 200
+
+        except ValueError as error:
+            return jsonify({"error": str(error)}), 400
+        except PsycopgError:
+            app.logger.exception("Failed to update security transaction")
+            return jsonify({
+                "error": "unable to update security transaction"
+            }), 400
+
+    @app.delete("/api/manage/security-transactions/<int:transaction_id>")
+    def delete_security_transaction(transaction_id):
+        """Delete a transaction only if the remaining history stays valid."""
+        try:
+            with connect(
+                _database_url(), row_factory=dict_row
+            ) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT
+                            st.id,
+                            st.account_security_id,
+                            a.is_active AS account_is_active,
+                            a.account_role
+                        FROM security_transactions st
+                        JOIN account_securities ase
+                            ON ase.id = st.account_security_id
+                        JOIN accounts a ON a.id = ase.account_id
+                        WHERE st.id = %s
+                        FOR UPDATE OF st, ase
+                        """,
+                        (transaction_id,),
+                    )
+                    existing = cursor.fetchone()
+
+                    if existing is None:
+                        return jsonify({"error": "transaction not found"}), 404
+
+                    if (
+                        not existing["account_is_active"]
+                        or existing["account_role"] != "PORTFOLIO"
+                    ):
+                        return jsonify({
+                            "error": "transaction account is not an active portfolio account"
+                        }), 409
+
+                    account_security_id = existing["account_security_id"]
+
+                    cursor.execute(
+                        "DELETE FROM security_transactions WHERE id = %s",
+                        (transaction_id,),
+                    )
+
+                    cursor.execute(
+                        """
+                        SELECT transaction_id, transaction_date,
+                               transaction_type, quantity_held
+                        FROM account_security_transaction_calculations
+                        WHERE account_security_id = %s
+                          AND quantity_held < 0
+                        ORDER BY transaction_date, transaction_sequence
+                        LIMIT 1
+                        """,
+                        (account_security_id,),
+                    )
+                    invalid_row = cursor.fetchone()
+
+                    if invalid_row is not None:
+                        connection.rollback()
+                        return jsonify({
+                            "error": (
+                                "deletion rejected because it would cause "
+                                "negative holdings in the transaction history"
+                            ),
+                            "conflicting_transaction_date":
+                                invalid_row["transaction_date"].isoformat(),
+                            "conflicting_transaction_type":
+                                invalid_row["transaction_type"],
+                        }), 409
+
+            return jsonify({
+                "message": "transaction deleted",
+                "transaction_id": transaction_id,
+            }), 200
+
+        except PsycopgError:
+            app.logger.exception("Failed to delete security transaction")
+            return jsonify({
+                "error": "unable to delete security transaction"
             }), 400
 
     @app.get("/api/accounts")

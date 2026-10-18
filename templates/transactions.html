@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+
+{% block title %}Transactions | Portfolio Tracker{% endblock %}
+
+{% block stylesheets %}
+<link
+    rel="stylesheet"
+    href="{{ url_for('static', filename='css/management.css') }}"
+>
+<link
+    rel="stylesheet"
+    href="{{ url_for('static', filename='css/transactions.css') }}"
+>
+{% endblock %}
+
+{% block content %}
+<section class="page-heading">
+    <div>
+        <h2>Security Transactions</h2>
+        <p>Review purchase, sale, and corporate-action history across your accounts.</p>
+    </div>
+</section>
+
+<section class="transactions-panel transaction-entry-panel">
+    <div class="transaction-entry-heading">
+        <div>
+            <h3 id="transaction-entry-title">Add Security Transaction</h3>
+            <p>Record a buy, sell, bonus, or stock split.</p>
+        </div>
+        <button type="button" id="toggle-transaction-form" class="primary-button">
+            Add transaction
+        </button>
+    </div>
+
+    <form id="transaction-entry-form" hidden>
+        <div class="transaction-entry-grid">
+            <label>
+                Account
+                <select id="entry-account" name="account_id" required>
+                    <option value="">Choose an account</option>
+                </select>
+            </label>
+
+            <label class="security-picker-label">
+                Security
+                <div id="entry-security-picker" class="security-picker">
+                    <input id="entry-security-search" type="search"
+                           placeholder="Choose an account first" autocomplete="off"
+                           aria-label="Search securities by name or symbol"
+                           aria-controls="entry-security-options"
+                           aria-expanded="false" disabled>
+                    <input id="entry-security" name="account_security_id"
+                           type="hidden" required>
+                    <div id="entry-security-options" class="security-picker-options"
+                         role="listbox" hidden></div>
+                </div>
+            </label>
+
+            <label>
+                Transaction date
+                <input id="entry-date" name="transaction_date" type="date" required>
+            </label>
+
+            <label>
+                Transaction type
+                <select id="entry-type" name="transaction_type" required>
+                    <option value="BUY">Buy</option>
+                    <option value="SELL">Sell</option>
+                    <option value="BONUS">Bonus</option>
+                    <option value="SPLIT">Split</option>
+                </select>
+            </label>
+        </div>
+
+        <div id="entry-trade-fields" class="transaction-entry-grid">
+            <label>
+                Quantity
+                <input id="entry-quantity" name="quantity" type="number"
+                       min="0.000001" step="0.000001">
+            </label>
+
+            <label>
+                Price per unit
+                <input id="entry-price" name="price" type="number"
+                       min="0" step="0.01">
+            </label>
+
+            <label>
+                Settlement amount (optional)
+                <input id="entry-settlement" name="settlement_amount" type="number"
+                       min="0" step="0.01">
+                <small>Leave blank to use quantity × price.</small>
+            </label>
+        </div>
+
+        <div id="entry-corporate-fields" class="transaction-entry-grid" hidden>
+            <label>
+                Corporate action from
+                <input id="entry-action-from" name="corporate_action_from"
+                       type="number" min="0.000001" step="0.000001">
+            </label>
+
+            <label>
+                Corporate action to
+                <input id="entry-action-to" name="corporate_action_to"
+                       type="number" min="0.000001" step="0.000001">
+            </label>
+        </div>
+
+        <div class="transaction-entry-grid">
+            <label>
+                Reference (optional)
+                <input id="entry-reference" name="reference" type="text"
+                       maxlength="200">
+            </label>
+
+            <label class="transaction-entry-notes">
+                Notes (optional)
+                <textarea id="entry-notes" name="notes" rows="2"></textarea>
+            </label>
+        </div>
+
+        <p id="transaction-entry-message" role="status" aria-live="polite"></p>
+
+        <div class="transaction-entry-actions">
+            <button type="submit" id="save-transaction" class="primary-button">
+                Save transaction
+            </button>
+            <button type="button" id="cancel-transaction-form" class="secondary-button">
+                Cancel
+            </button>
+        </div>
+    </form>
+</section>
+
+<section class="transactions-panel">
+    <div class="transactions-summary">
+        <div>
+            <span class="summary-label">Matching transactions</span>
+            <strong id="transaction-count">—</strong>
+        </div>
+        <div>
+            <span class="summary-label">Current page</span>
+            <strong id="transaction-page-summary">—</strong>
+        </div>
+    </div>
+
+    <form id="transaction-filters" class="transaction-filters">
+        <label>
+            Account
+            <select id="filter-account" name="account_id">
+                <option value="">All accounts</option>
+            </select>
+        </label>
+
+        <label>
+            Security
+            <select id="filter-security" name="security_id">
+                <option value="">All securities</option>
+            </select>
+        </label>
+
+        <label>
+            Transaction type
+            <select id="filter-type" name="transaction_type">
+                <option value="">All types</option>
+                <option value="BUY">Buy</option>
+                <option value="SELL">Sell</option>
+                <option value="BONUS">Bonus</option>
+                <option value="SPLIT">Split</option>
+            </select>
+        </label>
+
+        <div class="transaction-filter-actions">
+            <button type="submit" class="primary-button">Apply filters</button>
+            <button type="button" id="reset-transaction-filters" class="secondary-button">
+                Reset
+            </button>
+        </div>
+    </form>
+
+    <div id="transaction-message" role="status" aria-live="polite">
+        Loading transactions...
+    </div>
+
+    <div class="transactions-table-wrap">
+        <table class="transactions-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Account</th>
+                    <th>Security</th>
+                    <th>Type</th>
+                    <th class="numeric-cell">Quantity / Ratio</th>
+                    <th class="numeric-cell">Price</th>
+                    <th class="numeric-cell">Settlement</th>
+                    <th class="numeric-cell">Holding after transaction</th>
+                    <th class="numeric-cell">Average cost</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="transactions-table-body">
+                <tr>
+                    <td colspan="10">Loading transactions...</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="transaction-pagination">
+        <button type="button" id="transaction-previous" class="secondary-button" disabled>
+            Previous
+        </button>
+        <span id="transaction-page-label">Page 1</span>
+        <button type="button" id="transaction-next" class="secondary-button" disabled>
+            Next
+        </button>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/transactions.js') }}"></script>
+{% endblock %}
