@@ -14,6 +14,158 @@
 {% endblock %}
 
 {% block content %}
+<section class="transactions-panel" id="wallet-cash-panel">
+    <div class="transaction-entry-heading">
+        <div>
+            <h3>Wallet Cash</h3>
+            <p>Set the current cash balance shown by each broker. This is independent of deposit and withdrawal history.</p>
+        </div>
+    </div>
+
+    <form id="wallet-cash-form">
+        <div class="transaction-entry-grid">
+            <label>
+                Zerodha wallet cash (INR)
+                <input id="wallet-cash-1" type="number" min="0" step="0.01" required>
+            </label>
+            <label>
+                INDmoney wallet cash (USD)
+                <input id="wallet-cash-2" type="number" min="0" step="0.01" required>
+            </label>
+        </div>
+        <p id="wallet-cash-message" role="status" aria-live="polite"></p>
+        <div class="transaction-entry-actions">
+            <button type="submit" id="save-wallet-cash" class="primary-button">
+                Save wallet cash
+            </button>
+        </div>
+    </form>
+</section>
+
+<section class="transactions-panel" id="account-transactions-panel">
+    <div class="transaction-entry-heading">
+        <div>
+            <h3>Account Transactions</h3>
+            <p>Record deposits and withdrawals separately from security transactions.</p>
+        </div>
+        <button type="button" id="toggle-account-transaction-form" class="primary-button">
+            Add transaction
+        </button>
+    </div>
+
+    <form id="account-transaction-form" hidden>
+        <div class="transaction-entry-grid">
+            <label>
+                Account
+                <select id="account-transaction-account" required>
+                    <option value="">Choose an account</option>
+                </select>
+            </label>
+            <label>
+                Transaction date
+                <input id="account-transaction-date" type="date" required>
+            </label>
+            <label>
+                Transaction type
+                <select id="account-transaction-type" required>
+                    <option value="DEPOSIT">Deposit</option>
+                    <option value="WITHDRAWAL">Withdrawal</option>
+                </select>
+            </label>
+            <label>
+                Amount
+                <input id="account-transaction-amount" type="number"
+                       min="0.01" step="0.01" required>
+            </label>
+            <label>
+                Reference (optional)
+                <input id="account-transaction-reference" type="text" maxlength="200">
+            </label>
+            <label>
+                Description (optional)
+                <input id="account-transaction-description" type="text" maxlength="2000">
+            </label>
+        </div>
+        <p id="account-transaction-form-message" role="status" aria-live="polite"></p>
+        <div class="transaction-entry-actions">
+            <button type="submit" id="save-account-transaction" class="primary-button">
+                Save transaction
+            </button>
+            <button type="button" id="cancel-account-transaction-form" class="secondary-button">
+                Cancel
+            </button>
+        </div>
+    </form>
+
+    <div class="transactions-summary">
+        <div>
+            <span class="summary-label">Matching transactions</span>
+            <strong id="account-transaction-count">—</strong>
+        </div>
+        <div>
+            <span class="summary-label">Current page</span>
+            <strong id="account-transaction-page-summary">—</strong>
+        </div>
+    </div>
+
+    <form id="account-transaction-filters" class="transaction-filters">
+        <label>
+            Account
+            <select id="account-transaction-filter-account">
+                <option value="">All accounts</option>
+            </select>
+        </label>
+        <label>
+            Transaction type
+            <select id="account-transaction-filter-type">
+                <option value="">All types</option>
+                <option value="DEPOSIT">Deposit</option>
+                <option value="WITHDRAWAL">Withdrawal</option>
+            </select>
+        </label>
+        <div class="transaction-filter-actions">
+            <button type="submit" class="primary-button">Apply filters</button>
+            <button type="button" id="reset-account-transaction-filters"
+                    class="secondary-button">
+                Reset
+            </button>
+        </div>
+    </form>
+
+    <div id="account-transaction-message" role="status" aria-live="polite">
+        Loading account transactions...
+    </div>
+    <div class="transactions-table-wrap">
+        <table class="transactions-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Account</th>
+                    <th>Type</th>
+                    <th class="numeric-cell">Amount</th>
+                    <th>Reference</th>
+                    <th>Description</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="account-transactions-table-body">
+                <tr><td colspan="7">Loading account transactions...</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <div class="transaction-pagination">
+        <button type="button" id="account-transaction-previous"
+                class="secondary-button" disabled>
+            Previous
+        </button>
+        <span id="account-transaction-page-label">Page 1</span>
+        <button type="button" id="account-transaction-next"
+                class="secondary-button" disabled>
+            Next
+        </button>
+    </div>
+</section>
+
 <section class="page-heading">
     <div>
         <h2>Security Transactions</h2>
@@ -221,4 +373,5 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/transactions.js') }}"></script>
+<script src="{{ url_for('static', filename='js/account-transactions.js') }}"></script>
 {% endblock %}

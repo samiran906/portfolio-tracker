@@ -1326,6 +1326,494 @@ def create_app():
                 "error": "unable to activate account-security relationship"
             }), 400
 
+
+    @app.get("/api/manage/account-transactions")
+    def manage_account_transactions():
+        """List account deposits and withdrawals with optional filters."""
+        try:
+            account_id = request.args.get("account_id", type=int)
+            transaction_type = request.args.get(
+                "transaction_type", ""
+            ).strip().upper()
+            page = request.args.get("page", default=1, type=int)
+            page_size = request.args.get("page_size", default=25, type=int)
+
+            if page is None or page < 1:
+                return jsonify({"error": "page must be a positive integer"}), 400
+            if page_size is None or not 1 <= page_size <= 100:
+                return jsonify({
+                    "error": "page_size must be between 1 and 100"
+                }), 400
+            if account_id is not None and account_id <= 0:
+                return jsonify({"error": "account_id must be positive"}), 400
+            if transaction_type and transaction_type not in {
+                "DEPOSIT", "WITHDRAWAL"
+            }:
+                return jsonify({
+                    "error": "transaction_type must be DEPOSIT or WITHDRAWAL"
+                }), 400
+
+            conditions = [
+                "a.account_role = 'PORTFOLIO'",
+                "a.is_active = TRUE",
+                "act.transaction_type IN ('DEPOSIT', 'WITHDRAWAL')",
+            ]
+            params = []
+
+            if account_id is not None:
+                conditions.append("a.id = %s")
+                params.append(account_id)
+            if transaction_type:
+                conditions.append("act.transaction_type = %s")
+                params.append(transaction_type)
+
+            where_clause = "WHERE " + " AND ".join(conditions)
+            offset = (page - 1) * page_size
+
+            with connect(
+                _database_url(), row_factory=dict_row
+            ) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        f"""
+                        SELECT
+                            act.id AS transaction_id,
+                            act.account_id,
+                            a.name AS account_name,
+                            act.transaction_date,
+                            act.transaction_type,
+                            act.amount,
+                            act.currency,
+                            act.description,
+                            act.reference,
+                            COUNT(*) OVER() AS total_count
+                        FROM account_cash_transactions act
+                        JOIN accounts a ON a.id = act.account_id
+                        {where_clause}
+                        ORDER BY act.transaction_date DESC, act.id DESC
+                        LIMIT %s OFFSET %s;
+                        """,
+                        (*params, page_size, offset),
+                    )
+                    rows = cursor.fetchall()
+
+            total = int(rows[0]["total_count"]) if rows else 0
+            for row in rows:
+                row.pop("total_count", None)
+
+            return jsonify(_json_safe({
+                "items": rows,
+                "page": page,
+                "page_size": page_size,
+                "total": total,
+                "total_pages": (total + page_size - 1) // page_size,
+            }))
+
+        except PsycopgError:
+            app.logger.exception("Failed to fetch account transactions")
+            return jsonify({
+                "error": "unable to fetch account transactions"
+            }), 500
+
+    @app.post("/api/manage/account-transactions")
+    def create_account_transaction():
+        """Record a deposit or withdrawal in an active portfolio account."""
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({
+                "error": "request body must be a JSON object"
+            }), 400
+
+        from decimal import InvalidOperation
+
+        try:
+            account_id = payload.get("account_id")
+            if (
+                isinstance(account_id, bool)
+                or not isinstance(account_id, int)
+                or account_id <= 0
+            ):
+                raise ValueError("account_id must be a positive integer")
+
+            transaction_type = str(
+                payload.get("transaction_type", "")
+            ).strip().upper()
+            if transaction_type not in {"DEPOSIT", "WITHDRAWAL"}:
+                raise ValueError(
+                    "transaction_type must be DEPOSIT or WITHDRAWAL"
+                )
+
+            raw_date = payload.get("transaction_date")
+            if not isinstance(raw_date, str) or not raw_date.strip():
+                raise ValueError("transaction_date is required")
+            try:
+                transaction_date = date.fromisoformat(raw_date.strip())
+            except ValueError:
+                raise ValueError(
+                    "transaction_date must use YYYY-MM-DD format"
+                )
+
+            raw_amount = payload.get("amount")
+            if raw_amount is None or raw_amount == "":
+                raise ValueError("amount is required")
+            try:
+                amount = Decimal(str(raw_amount))
+            except (InvalidOperation, ValueError):
+                raise ValueError("amount must be a valid number")
+            if not amount.is_finite() or amount <= 0:
+                raise ValueError("amount must be a finite number greater than zero")
+            if amount.as_tuple().exponent < -2:
+                raise ValueError("amount can have at most two decimal places")
+
+            description = payload.get("description")
+            reference = payload.get("reference")
+            if description is not None and not isinstance(description, str):
+                raise ValueError("description must be text or null")
+            if reference is not None and not isinstance(reference, str):
+                raise ValueError("reference must be text or null")
+            if description is not None and len(description) > 2000:
+                raise ValueError("description cannot exceed 2000 characters")
+            if reference is not None and len(reference) > 200:
+                raise ValueError("reference cannot exceed 200 characters")
+
+            with connect(
+                _database_url(), row_factory=dict_row
+            ) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT id, name, base_currency
+                        FROM accounts
+                        WHERE id = %s
+                          AND account_role = 'PORTFOLIO'
+                          AND is_active = TRUE
+                        FOR SHARE;
+                        """,
+                        (account_id,),
+                    )
+                    account = cursor.fetchone()
+
+                    if account is None:
+                        return jsonify({
+                            "error": "account must be an active portfolio account"
+                        }), 400
+
+                    cursor.execute(
+                        """
+                        INSERT INTO account_cash_transactions (
+                            account_id,
+                            transaction_date,
+                            transaction_type,
+                            amount,
+                            currency,
+                            description,
+                            reference
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        RETURNING id;
+                        """,
+                        (
+                            account_id,
+                            transaction_date,
+                            transaction_type,
+                            amount,
+                            account["base_currency"],
+                            description.strip() if description else None,
+                            reference.strip() if reference else None,
+                        ),
+                    )
+                    transaction_id = cursor.fetchone()["id"]
+
+            return jsonify({
+                "message": "account transaction created",
+                "transaction_id": transaction_id,
+            }), 201
+
+        except ValueError as error:
+            return jsonify({"error": str(error)}), 400
+        except PsycopgError:
+            app.logger.exception("Failed to create account transaction")
+            return jsonify({
+                "error": "unable to create account transaction"
+            }), 500
+
+    @app.put("/api/manage/account-transactions/<int:transaction_id>")
+    def update_account_transaction(transaction_id):
+        """Update an existing deposit or withdrawal."""
+        from decimal import InvalidOperation
+
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({
+                "error": "request body must be a JSON object"
+            }), 400
+
+        try:
+            account_id = payload.get("account_id")
+            if (
+                isinstance(account_id, bool)
+                or not isinstance(account_id, int)
+                or account_id <= 0
+            ):
+                raise ValueError("account_id must be a positive integer")
+
+            transaction_type = str(
+                payload.get("transaction_type", "")
+            ).strip().upper()
+            if transaction_type not in {"DEPOSIT", "WITHDRAWAL"}:
+                raise ValueError(
+                    "transaction_type must be DEPOSIT or WITHDRAWAL"
+                )
+
+            raw_date = payload.get("transaction_date")
+            if not isinstance(raw_date, str) or not raw_date.strip():
+                raise ValueError("transaction_date is required")
+            try:
+                transaction_date = date.fromisoformat(raw_date.strip())
+            except ValueError:
+                raise ValueError(
+                    "transaction_date must use YYYY-MM-DD format"
+                )
+
+            raw_amount = payload.get("amount")
+            if raw_amount is None or raw_amount == "":
+                raise ValueError("amount is required")
+            try:
+                amount = Decimal(str(raw_amount))
+            except (InvalidOperation, ValueError):
+                raise ValueError("amount must be a valid number")
+            if not amount.is_finite() or amount <= 0:
+                raise ValueError(
+                    "amount must be a finite number greater than zero"
+                )
+            if amount.as_tuple().exponent < -2:
+                raise ValueError(
+                    "amount can have at most two decimal places"
+                )
+
+            description = payload.get("description")
+            reference = payload.get("reference")
+            if description is not None and not isinstance(description, str):
+                raise ValueError("description must be text or null")
+            if reference is not None and not isinstance(reference, str):
+                raise ValueError("reference must be text or null")
+            if description is not None and len(description) > 2000:
+                raise ValueError(
+                    "description cannot exceed 2000 characters"
+                )
+            if reference is not None and len(reference) > 200:
+                raise ValueError(
+                    "reference cannot exceed 200 characters"
+                )
+
+            with connect(
+                _database_url(), row_factory=dict_row
+            ) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        SELECT id
+                        FROM accounts
+                        WHERE id = %s
+                          AND account_role = 'PORTFOLIO'
+                          AND is_active = TRUE;
+                        """,
+                        (account_id,),
+                    )
+                    account = cursor.fetchone()
+                    if account is None:
+                        raise ValueError(
+                            "account must be an active portfolio account"
+                        )
+
+                    cursor.execute(
+                        """
+                        UPDATE account_cash_transactions AS act
+                        SET account_id = %s,
+                            transaction_date = %s,
+                            transaction_type = %s,
+                            amount = %s,
+                            currency = a.base_currency,
+                            description = %s,
+                            reference = %s
+                        FROM accounts AS a
+                        WHERE act.id = %s
+                          AND act.transaction_type IN (
+                              'DEPOSIT', 'WITHDRAWAL'
+                          )
+                          AND a.id = %s
+                        RETURNING act.id;
+                        """,
+                        (
+                            account_id,
+                            transaction_date,
+                            transaction_type,
+                            amount,
+                            description.strip() if description else None,
+                            reference.strip() if reference else None,
+                            transaction_id,
+                            account_id,
+                        ),
+                    )
+                    updated = cursor.fetchone()
+
+            if updated is None:
+                return jsonify({
+                    "error": "account transaction not found"
+                }), 404
+
+            return jsonify({
+                "message": "account transaction updated",
+                "transaction_id": transaction_id,
+            })
+
+        except ValueError as error:
+            return jsonify({"error": str(error)}), 400
+        except PsycopgError:
+            app.logger.exception("Failed to update account transaction")
+            return jsonify({
+                "error": "unable to update account transaction"
+            }), 500
+
+    @app.delete("/api/manage/account-transactions/<int:transaction_id>")
+    def delete_account_transaction(transaction_id):
+        """Delete an existing deposit or withdrawal."""
+        try:
+            with connect(
+                _database_url(), row_factory=dict_row
+            ) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        DELETE FROM account_cash_transactions
+                        WHERE id = %s
+                          AND transaction_type IN (
+                              'DEPOSIT', 'WITHDRAWAL'
+                          )
+                        RETURNING id;
+                        """,
+                        (transaction_id,),
+                    )
+                    deleted = cursor.fetchone()
+
+            if deleted is None:
+                return jsonify({
+                    "error": "account transaction not found"
+                }), 404
+
+            return jsonify({
+                "message": "account transaction deleted",
+                "transaction_id": transaction_id,
+            })
+
+        except PsycopgError:
+            app.logger.exception("Failed to delete account transaction")
+            return jsonify({
+                "error": "unable to delete account transaction"
+            }), 500
+
+    @app.get("/api/manage/wallet-cash")
+    def get_wallet_cash():
+        """Return current wallet cash balances for supported broker accounts."""
+        try:
+            rows = _fetch_all("""
+                SELECT
+                    w.account_id,
+                    a.name AS account_name,
+                    w.cash_balance,
+                    a.base_currency AS currency,
+                    w.updated_at
+                FROM account_wallet_cash w
+                JOIN accounts a ON a.id = w.account_id
+                WHERE w.account_id IN (1, 2)
+                ORDER BY w.account_id;
+            """)
+
+            return jsonify(_json_safe({"items": rows}))
+
+        except PsycopgError:
+            app.logger.exception("Failed to fetch wallet cash")
+            return jsonify({
+                "error": "unable to fetch wallet cash"
+            }), 500
+
+    @app.put("/api/manage/wallet-cash/<int:account_id>")
+    def update_wallet_cash(account_id):
+        """Set the current wallet cash balance for a supported broker."""
+        from decimal import InvalidOperation
+
+        if account_id not in {1, 2}:
+            return jsonify({
+                "error": "wallet cash is supported only for Zerodha and INDmoney"
+            }), 400
+
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({
+                "error": "request body must be a JSON object"
+            }), 400
+
+        raw_balance = payload.get("cash_balance")
+        if raw_balance is None or raw_balance == "":
+            return jsonify({"error": "cash_balance is required"}), 400
+
+        try:
+            balance = Decimal(str(raw_balance))
+        except (InvalidOperation, ValueError):
+            return jsonify({"error": "cash_balance must be a valid number"}), 400
+
+        if not balance.is_finite() or balance < 0:
+            return jsonify({
+                "error": "cash_balance must be a finite, non-negative number"
+            }), 400
+
+        if balance.as_tuple().exponent < -2:
+            return jsonify({
+                "error": "cash_balance can have at most two decimal places"
+            }), 400
+
+        try:
+            with connect(
+                _database_url(), row_factory=dict_row
+            ) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        UPDATE account_wallet_cash AS w
+                        SET cash_balance = %s,
+                            updated_at = NOW()
+                        FROM accounts AS a
+                        WHERE w.account_id = %s
+                          AND a.id = w.account_id
+                          AND a.is_active = TRUE
+                          AND a.account_role = 'PORTFOLIO'
+                        RETURNING
+                            w.account_id,
+                            a.name AS account_name,
+                            w.cash_balance,
+                            a.base_currency AS currency,
+                            w.updated_at;
+                        """,
+                        (balance, account_id),
+                    )
+                    row = cursor.fetchone()
+
+            if row is None:
+                return jsonify({
+                    "error": "wallet cash account not found or inactive"
+                }), 404
+
+            return jsonify({
+                "message": "wallet cash updated",
+                "item": _json_safe(row),
+            })
+
+        except PsycopgError:
+            app.logger.exception("Failed to update wallet cash")
+            return jsonify({
+                "error": "unable to update wallet cash"
+            }), 500
+
     @app.get("/api/manage/security-transactions")
     def manage_security_transactions():
         # Read-only transaction history with optional filters and pagination.
