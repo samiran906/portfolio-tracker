@@ -14,6 +14,73 @@
 {% endblock %}
 
 {% block content %}
+<section class="transactions-panel" id="retirement-balance-panel">
+    <div class="transaction-entry-heading">
+        <div>
+            <h3>Retirement Balance</h3>
+            <p>Record Samiran's and Sukhada's NPS and EPS balances separately.</p>
+        </div>
+    </div>
+
+    <div class="retirement-balance-grid">
+        <form id="nps-balance-form" class="retirement-balance-card">
+            <h4>NPS Balance</h4>
+            <div class="transaction-entry-grid">
+                <label>
+                    Samiran NPS (INR)
+                    <input id="nps-samiran" type="number" min="0" step="0.01" required>
+                </label>
+                <label>
+                    Sukhada NPS (INR)
+                    <input id="nps-sukhada" type="number" min="0" step="0.01" required>
+                </label>
+                <label>
+                    Balance date
+                    <input id="nps-date" type="date" required>
+                </label>
+            </div>
+            <div class="retirement-total">
+                <span>Total NPS Balance</span>
+                <strong id="nps-total">₹0.00</strong>
+            </div>
+            <p id="nps-balance-message" role="status" aria-live="polite"></p>
+            <div class="transaction-entry-actions">
+                <button type="submit" id="save-nps-balance" class="primary-button">
+                    Save NPS Balance
+                </button>
+            </div>
+        </form>
+
+        <form id="eps-balance-form" class="retirement-balance-card">
+            <h4>EPS Balance</h4>
+            <div class="transaction-entry-grid">
+                <label>
+                    Samiran EPS (INR)
+                    <input id="eps-samiran" type="number" min="0" step="0.01" required>
+                </label>
+                <label>
+                    Sukhada EPS (INR)
+                    <input id="eps-sukhada" type="number" min="0" step="0.01" required>
+                </label>
+                <label>
+                    Balance date
+                    <input id="eps-date" type="date" required>
+                </label>
+            </div>
+            <div class="retirement-total">
+                <span>Total EPS Balance</span>
+                <strong id="eps-total">₹0.00</strong>
+            </div>
+            <p id="eps-balance-message" role="status" aria-live="polite"></p>
+            <div class="transaction-entry-actions">
+                <button type="submit" id="save-eps-balance" class="primary-button">
+                    Save EPS Balance
+                </button>
+            </div>
+        </form>
+    </div>
+</section>
+
 <section class="transactions-panel" id="wallet-cash-panel">
     <div class="transaction-entry-heading">
         <div>
@@ -372,6 +439,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/retirement-balances.js') }}"></script>
 <script src="{{ url_for('static', filename='js/transactions.js') }}"></script>
 <script src="{{ url_for('static', filename='js/account-transactions.js') }}"></script>
 {% endblock %}

@@ -36,7 +36,14 @@ function renderPortfolio(p){
 }
 function renderAccounts(rows){
     const b=document.getElementById("accounts-body");
-    b.innerHTML=rows.length?rows.map(a=>`<tr><td>${escapeHtml(a.account_name)}</td><td>${formatCurrency(a.total_account_value)}</td><td>${formatCurrency(a.total_securities_value)}</td><td>${formatCurrency(a.total_cash)}</td><td class="${valueClass(a.total_unrealized_pnl)}">${formatCurrency(a.total_unrealized_pnl)}</td><td class="${valueClass(a.unrealized_pnl_percent)}">${formatPercent(a.unrealized_pnl_percent)}</td><td>${formatPercent(a.account_xirr_percent)}</td></tr>`).join(""):emptyRow(7,"No account data available");
+    b.innerHTML=rows.length?rows.map(a=>{
+        const balanceOnly=a.account_role==="BALANCE_ONLY";
+        const accountLabel=balanceOnly&&a.balance_date
+            ? `${escapeHtml(a.account_name)}<br><small>Balance as of ${escapeHtml(formatDate(a.balance_date))}</small>`
+            : escapeHtml(a.account_name);
+        const notApplicable="—";
+        return `<tr><td>${accountLabel}</td><td>${formatCurrency(a.total_account_value)}</td><td>${balanceOnly?notApplicable:formatCurrency(a.total_securities_value)}</td><td>${balanceOnly?notApplicable:formatCurrency(a.total_cash)}</td><td class="${balanceOnly?"":valueClass(a.total_unrealized_pnl)}">${balanceOnly?notApplicable:formatCurrency(a.total_unrealized_pnl)}</td><td>${balanceOnly?notApplicable:formatPercent(a.unrealized_pnl_percent)}</td><td>${balanceOnly?notApplicable:formatPercent(a.account_xirr_percent)}</td></tr>`;
+    }).join(""):emptyRow(7,"No account data available");
 }
 function renderClassifications(rows){
     const b=document.getElementById("classifications-body");

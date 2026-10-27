@@ -1779,19 +1779,35 @@ def create_app():
                 with connection.cursor() as cursor:
                     cursor.execute(
                         """
-                        UPDATE account_wallet_cash AS w
-                        SET cash_balance = %s,
-                            updated_at = NOW()
+                        INSERT INTO account_wallet_cash AS w (
+                            account_id,
+                            cash_balance,
+                            updated_at
+                        )
+                        SELECT
+                            a.id,
+                            %s,
+                            NOW()
                         FROM accounts AS a
-                        WHERE w.account_id = %s
-                          AND a.id = w.account_id
+                        WHERE a.id = %s
                           AND a.is_active = TRUE
                           AND a.account_role = 'PORTFOLIO'
+                        ON CONFLICT (account_id) DO UPDATE
+                        SET cash_balance = EXCLUDED.cash_balance,
+                            updated_at = NOW()
                         RETURNING
                             w.account_id,
-                            a.name AS account_name,
+                            (
+                                SELECT a.name
+                                FROM accounts AS a
+                                WHERE a.id = w.account_id
+                            ) AS account_name,
                             w.cash_balance,
-                            a.base_currency AS currency,
+                            (
+                                SELECT a.base_currency
+                                FROM accounts AS a
+                                WHERE a.id = w.account_id
+                            ) AS currency,
                             w.updated_at;
                         """,
                         (balance, account_id),
@@ -1812,6 +1828,201 @@ def create_app():
             app.logger.exception("Failed to update wallet cash")
             return jsonify({
                 "error": "unable to update wallet cash"
+            }), 500
+
+    @app.get("/api/manage/balance-snapshots")
+    def get_balance_snapshots():
+        """Return latest balances and dated history for balance-only accounts."""
+        try:
+            rows = _fetch_all("""
+                SELECT
+                    a.id AS account_id,
+                    a.name AS account_name,
+                    a.base_currency AS currency,
+                    s.id AS snapshot_id,
+                    s.balance_date,
+                    s.balance,
+                    s.samiran_balance,
+                    s.sukhada_balance,
+                    s.notes,
+                    s.created_at
+                FROM accounts a
+                JOIN account_balance_snapshots s
+                    ON s.account_id = a.id
+                WHERE a.account_role = 'BALANCE_ONLY'
+                  AND a.is_active = TRUE
+                ORDER BY a.id, s.balance_date DESC;
+            """)
+
+            latest = {}
+            history = []
+
+            for row in rows:
+                item = _json_safe(row)
+                history.append(item)
+                account_id = row["account_id"]
+                if (
+                    account_id not in latest
+                    and row["snapshot_id"] is not None
+                ):
+                    latest[account_id] = item
+
+            accounts = _fetch_all("""
+                SELECT id AS account_id, name AS account_name,
+                       base_currency AS currency
+                FROM accounts
+                WHERE account_role = 'BALANCE_ONLY'
+                  AND is_active = TRUE
+                ORDER BY id;
+            """)
+
+            return jsonify(_json_safe({
+                "accounts": [
+                    {
+                        **account,
+                        "latest_balance": latest.get(account["account_id"]),
+                    }
+                    for account in accounts
+                ],
+                "history": history,
+            }))
+
+        except PsycopgError:
+            app.logger.exception("Failed to fetch balance snapshots")
+            return jsonify({
+                "error": "unable to fetch balance snapshots"
+            }), 500
+
+    @app.put("/api/manage/balance-snapshots/<int:account_id>")
+    def save_balance_snapshot(account_id):
+        """Create or update a dated balance for an active balance-only account."""
+        from decimal import InvalidOperation
+
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({
+                "error": "request body must be a JSON object"
+            }), 400
+
+        raw_date = payload.get("balance_date")
+        if not isinstance(raw_date, str) or not raw_date.strip():
+            return jsonify({"error": "balance_date is required"}), 400
+
+        try:
+            balance_date = date.fromisoformat(raw_date.strip())
+        except ValueError:
+            return jsonify({
+                "error": "balance_date must use YYYY-MM-DD format"
+            }), 400
+
+        individual_mode = (
+            "samiran_balance" in payload or "sukhada_balance" in payload
+        )
+
+        def parse_amount(field_name):
+            raw = payload.get(field_name)
+            if raw is None or raw == "":
+                raise ValueError(f"{field_name} is required")
+            try:
+                amount = Decimal(str(raw))
+            except (InvalidOperation, ValueError):
+                raise ValueError(f"{field_name} must be a valid number")
+            if not amount.is_finite() or amount < 0:
+                raise ValueError(
+                    f"{field_name} must be a finite, non-negative number"
+                )
+            if amount.as_tuple().exponent < -2:
+                raise ValueError(
+                    f"{field_name} can have at most two decimal places"
+                )
+            return amount
+
+        samiran_balance = None
+        sukhada_balance = None
+
+        try:
+            if individual_mode:
+                samiran_balance = parse_amount("samiran_balance")
+                sukhada_balance = parse_amount("sukhada_balance")
+                balance = samiran_balance + sukhada_balance
+            else:
+                balance = parse_amount("balance")
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+        notes = payload.get("notes")
+        if notes is not None and not isinstance(notes, str):
+            return jsonify({"error": "notes must be text or null"}), 400
+        if notes is not None and len(notes) > 2000:
+            return jsonify({"error": "notes cannot exceed 2000 characters"}), 400
+
+        try:
+            with connect(
+                _database_url(), row_factory=dict_row
+            ) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT id, name, base_currency
+                        FROM accounts
+                        WHERE id = %s
+                          AND account_role = 'BALANCE_ONLY'
+                          AND is_active = TRUE
+                        FOR SHARE;
+                    """, (account_id,))
+                    account = cursor.fetchone()
+
+                    if account is None:
+                        return jsonify({
+                            "error": "account must be an active balance-only account"
+                        }), 400
+
+                    cursor.execute("""
+                        INSERT INTO account_balance_snapshots AS s (
+                            account_id, balance_date, balance,
+                            samiran_balance, sukhada_balance,
+                            currency, notes
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (account_id, balance_date)
+                        DO UPDATE SET
+                            balance = EXCLUDED.balance,
+                            samiran_balance = EXCLUDED.samiran_balance,
+                            sukhada_balance = EXCLUDED.sukhada_balance,
+                            currency = EXCLUDED.currency,
+                            notes = EXCLUDED.notes
+                        RETURNING
+                            s.id AS snapshot_id,
+                            s.account_id,
+                            s.balance_date,
+                            s.balance,
+                            s.samiran_balance,
+                            s.sukhada_balance,
+                            s.currency,
+                            s.notes,
+                            s.created_at;
+                    """, (
+                        account_id,
+                        balance_date,
+                        balance,
+                        samiran_balance,
+                        sukhada_balance,
+                        account["base_currency"],
+                        notes.strip() if notes else None,
+                    ))
+                    saved = cursor.fetchone()
+
+            return jsonify({
+                "message": "balance snapshot saved",
+                "item": _json_safe({
+                    **saved,
+                    "account_name": account["name"],
+                }),
+            })
+
+        except PsycopgError:
+            app.logger.exception("Failed to save balance snapshot")
+            return jsonify({
+                "error": "unable to save balance snapshot"
             }), 500
 
     @app.get("/api/manage/security-transactions")
@@ -2490,14 +2701,56 @@ def create_app():
             """
             SELECT
                 a.*,
+                ac.account_role,
                 ar.account_xirr_percent
             FROM account_summary a
+            JOIN accounts ac
+                ON ac.id = a.account_id
             LEFT JOIN account_return_summary ar
                 ON ar.account_id = a.account_id
                AND ar.valuation_date = a.valuation_date
             ORDER BY a.total_account_value DESC;
             """
         )
+
+        balance_accounts = _fetch_all(
+            """
+            SELECT
+                ac.id AS account_id,
+                ac.name AS account_name,
+                ac.base_currency AS currency,
+                ac.account_role,
+                s.balance AS total_account_value,
+                s.balance_date
+            FROM accounts ac
+            LEFT JOIN LATERAL (
+                SELECT balance, balance_date
+                FROM account_balance_snapshots
+                WHERE account_id = ac.id
+                ORDER BY balance_date DESC
+                LIMIT 1
+            ) s ON TRUE
+            WHERE ac.account_role = 'BALANCE_ONLY'
+              AND ac.is_active = TRUE
+            ORDER BY ac.id;
+            """
+        )
+
+        for account in balance_accounts:
+            accounts.append({
+                "account_id": account["account_id"],
+                "account_name": account["account_name"],
+                "account_role": account["account_role"],
+                "currency": account["currency"],
+                "total_account_value": account["total_account_value"] or 0,
+                "total_cost_value": None,
+                "total_securities_value": None,
+                "total_cash": None,
+                "total_unrealized_pnl": None,
+                "unrealized_pnl_percent": None,
+                "account_xirr_percent": None,
+                "balance_date": account["balance_date"],
+            })
 
         classifications = _fetch_all(
             """
