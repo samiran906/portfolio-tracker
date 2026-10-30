@@ -1,2 +1,4 @@
 Flask
 psycopg[binary]
+
+yfinance>=0.2.54,<2
