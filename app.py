@@ -10,6 +10,8 @@ from psycopg import Error as PsycopgError
 from psycopg import connect
 from psycopg.rows import dict_row
 
+from market_data.flask_routes import create_market_data_blueprint
+
 
 def _json_safe(value):
     """Preserve money/rate precision and format dates consistently in JSON."""
@@ -73,6 +75,15 @@ def _execute(sql, params=None):
 
 def create_app():
     app = Flask(__name__)
+
+    app.register_blueprint(
+        create_market_data_blueprint(
+            lambda: connect(
+                _database_url(),
+                row_factory=dict_row
+            )
+        )
+    )
 
     @app.get("/")
     def dashboard():
