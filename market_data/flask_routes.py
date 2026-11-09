@@ -19,7 +19,8 @@ SECURITY_LOOKUP_SQL = """
         s.currency,
         ase.id AS account_security_id,
         ase.broker_symbol,
-        a.id AS account_id
+        a.id AS account_id,
+        a.name AS account_name
     FROM securities s
     JOIN account_securities ase
         ON ase.security_id = s.id
@@ -109,6 +110,12 @@ def create_market_data_blueprint(
             "status": result.status,
             "records_written": result.records_written,
         }
+
+        if result.provider:
+            payload["provider"] = result.provider
+
+        if result.fallback_reason:
+            payload["fallback_reason"] = result.fallback_reason
 
         if result.error:
             payload["error"] = result.error

@@ -56,6 +56,7 @@ class MarketDataFlaskRouteTests(unittest.TestCase):
             "account_security_id": 10,
             "broker_symbol": "TEST.NS",
             "account_id": 5,
+            "account_name": "Zerodha",
         }
 
         self.rows = [self.security]
@@ -75,11 +76,19 @@ class MarketDataFlaskRouteTests(unittest.TestCase):
         self.client = app.test_client()
 
     @staticmethod
-    def result(status="success", records_written=1, error=None):
+    def result(
+        status="success",
+        records_written=1,
+        error=None,
+        provider=None,
+        fallback_reason=None,
+    ):
         return SimpleNamespace(
             status=status,
             records_written=records_written,
             error=error,
+            provider=provider,
+            fallback_reason=fallback_reason,
         )
 
     def test_history_success(self):
@@ -188,6 +197,63 @@ class MarketDataFlaskRouteTests(unittest.TestCase):
         self.service.refresh_quote_result.assert_called_once_with(
             self.security
         )
+
+    def test_quote_response_includes_provider(self):
+        self.service.refresh_quote_result.return_value = self.result(
+            provider="NSE",
+        )
+
+        response = self.client.post(
+            "/api/market-data/securities/1/quote",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["provider"], "NSE")
+        self.assertNotIn("fallback_reason", response.json)
+
+    def test_quote_response_includes_fallback_details(self):
+        self.service.refresh_quote_result.return_value = self.result(
+            provider="Yahoo Finance",
+            fallback_reason="NSE offline",
+        )
+
+        response = self.client.post(
+            "/api/market-data/securities/1/quote",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["provider"], "Yahoo Finance")
+        self.assertEqual(response.json["fallback_reason"], "NSE offline")
+
+    def test_history_response_includes_provider_and_fallback(self):
+        self.service.refresh_history_result.return_value = self.result(
+            records_written=10,
+            provider="Yahoo Finance",
+            fallback_reason="NSE returned no historical data",
+        )
+
+        response = self.client.post(
+            "/api/market-data/securities/1/history",
+            json={"start_date": "2026-01-01"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["provider"], "Yahoo Finance")
+        self.assertEqual(
+            response.json["fallback_reason"],
+            "NSE returned no historical data",
+        )
+
+    def test_response_omits_provider_when_not_available(self):
+        self.service.refresh_quote_result.return_value = self.result()
+
+        response = self.client.post(
+            "/api/market-data/securities/1/quote",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("provider", response.json)
+        self.assertNotIn("fallback_reason", response.json)
 
     def test_provider_failure_returns_502(self):
         self.service.refresh_quote_result.return_value = self.result(
