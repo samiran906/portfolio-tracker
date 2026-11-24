@@ -80,5 +80,88 @@ class StorageTests(unittest.TestCase):
             self.storage.save_quote(-1, quote)
 
 
+    def test_latest_price_dates_returns_results_as_dictionary(self):
+        self.cursor.fetchall.return_value = [
+            {
+                "security_id": 3,
+                "latest_price_date": date(2026, 11, 9),
+            },
+            {
+                "security_id": 6,
+                "latest_price_date": date(2026, 11, 6),
+            },
+        ]
+
+        result = self.storage.get_latest_price_dates([3, 6, 8])
+
+        self.assertEqual(
+            result,
+            {
+                3: date(2026, 11, 9),
+                6: date(2026, 11, 6),
+            },
+        )
+
+        self.cursor.execute.assert_called_once()
+        sql, values = self.cursor.execute.call_args.args
+        self.assertIn("MAX(price_date)", sql)
+        self.assertIn("GROUP BY security_id", sql)
+        self.assertEqual(values, ([3, 6, 8],))
+
+    def test_latest_price_dates_empty_input_does_not_open_connection(self):
+        connection_factory = MagicMock()
+        storage = MarketDataStorage(connection_factory)
+
+        self.assertEqual(storage.get_latest_price_dates([]), {})
+        connection_factory.assert_not_called()
+
+    def test_latest_price_dates_rejects_invalid_security_ids(self):
+        with self.assertRaises(ValueError):
+            self.storage.get_latest_price_dates([3, 0, 6])
+
+
+
+    def test_get_active_market_data_securities(self):
+        expected_rows = [
+            {
+                "security_id": 3,
+                "name": "HDFC Bank",
+                "symbol": "HDFCBANK",
+                "instrument_type": "STOCK",
+                "currency": "INR",
+                "account_security_id": 10,
+                "broker_symbol": "HDFCBANK",
+                "account_id": 1,
+                "account_name": "Zerodha",
+                "active_association_count": 1,
+                "first_transaction_date": date(2024, 1, 15),
+            }
+        ]
+
+        self.cursor.fetchall.return_value = expected_rows
+
+        result = self.storage.get_active_market_data_securities()
+
+        self.assertEqual(result, expected_rows)
+        self.cursor.execute.assert_called_once()
+
+        sql = self.cursor.execute.call_args.args[0]
+        self.assertIn("ase.is_active = TRUE", sql)
+        self.assertIn("a.is_active = TRUE", sql)
+        self.assertIn("a.account_role = 'PORTFOLIO'", sql)
+        self.assertIn("s.is_active = TRUE", sql)
+        self.assertIn("COUNT(*) OVER", sql)
+        self.assertIn("MIN(st.transaction_date)", sql)
+
+    def test_get_active_market_data_securities_returns_empty_list(self):
+        self.cursor.fetchall.return_value = []
+
+        result = self.storage.get_active_market_data_securities()
+
+        self.assertEqual(result, [])
+        self.cursor.execute.assert_called_once()
+
+
+
 if __name__ == "__main__":
     unittest.main()

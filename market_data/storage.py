@@ -1,5 +1,6 @@
 """PostgreSQL persistence for normalized market prices."""
 
+from datetime import date
 from market_data.models import MarketQuote, PriceBar
 
 
@@ -8,6 +9,82 @@ class MarketDataStorage:
 
     def __init__(self, connection_factory):
         self._connection_factory = connection_factory
+
+
+    def get_latest_price_dates(self, security_ids: list[int]) -> dict[int, date]:
+        """Return the latest stored price date for each requested security."""
+        if not security_ids:
+            return {}
+
+        if any(security_id <= 0 for security_id in security_ids):
+            raise ValueError("All security IDs must be positive")
+
+        sql = """
+            SELECT
+                security_id,
+                MAX(price_date) AS latest_price_date
+            FROM security_prices
+            WHERE security_id = ANY(%s)
+            GROUP BY security_id
+        """
+
+        with self._connection_factory() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(sql, (security_ids,))
+                rows = cursor.fetchall()
+
+        return {
+            row["security_id"]: row["latest_price_date"]
+            for row in rows
+        }
+
+
+    def get_active_market_data_securities(self) -> list[dict]:
+        """Return active market-data securities and their portfolio associations."""
+        sql = """
+            SELECT
+                s.id AS security_id,
+                s.name,
+                s.symbol,
+                s.instrument_type,
+                s.currency,
+                ase.id AS account_security_id,
+                ase.broker_symbol,
+                a.id AS account_id,
+                a.name AS account_name,
+                COUNT(*) OVER (
+                    PARTITION BY s.id
+                ) AS active_association_count,
+                transaction_dates.first_transaction_date
+            FROM securities s
+            JOIN account_securities ase
+                ON ase.security_id = s.id
+               AND ase.is_active = TRUE
+            JOIN accounts a
+                ON a.id = ase.account_id
+               AND a.is_active = TRUE
+               AND a.account_role = 'PORTFOLIO'
+            LEFT JOIN (
+                SELECT
+                    ase_tx.security_id,
+                    MIN(st.transaction_date) AS first_transaction_date
+                FROM security_transactions st
+                JOIN account_securities ase_tx
+                    ON ase_tx.id = st.account_security_id
+                GROUP BY ase_tx.security_id
+            ) transaction_dates
+                ON transaction_dates.security_id = s.id
+            WHERE s.is_active = TRUE
+              AND s.instrument_type IN ('STOCK', 'ETF', 'MUTUAL_FUND')
+            ORDER BY s.id, ase.id
+        """
+
+        with self._connection_factory() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(sql)
+                rows = cursor.fetchall()
+
+        return rows
 
     def save_history(self, security_id: int, bars: list[PriceBar]) -> int:
         """Upsert daily prices; return the number of records submitted for upsert."""

@@ -4,6 +4,8 @@ from datetime import date, datetime
 from decimal import Decimal
 import logging
 import os
+import subprocess
+import sys
 
 from flask import Flask, jsonify, render_template, request
 from psycopg import Error as PsycopgError
@@ -72,6 +74,49 @@ def _execute(sql, params=None):
         with connection.cursor() as cursor:
             cursor.execute(sql, params or ())
             return cursor.fetchone()
+
+def _launch_initial_market_data_refresh(app, security_id):
+    """Launch an isolated initial history refresh after security creation commits."""
+    state_dir = os.path.join(
+        os.path.expanduser("~"),
+        ".local",
+        "state",
+        "portfolio-tracker",
+    )
+    os.makedirs(state_dir, mode=0o700, exist_ok=True)
+    log_path = os.path.join(state_dir, "initial-market-data-refresh.log")
+
+    log_file = open(log_path, "a", encoding="utf-8", buffering=1)
+    try:
+        process = subprocess.Popen(
+            [
+                "/usr/bin/flock",
+                "/run/lock/portfolio_market_data.lock",
+                sys.executable,
+                "-m",
+                "market_data.batch_cli",
+                "--execute",
+                "--security-id",
+                str(security_id),
+                "--delay-seconds",
+                "0",
+            ],
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+            stdin=subprocess.DEVNULL,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+            close_fds=True,
+        )
+    finally:
+        log_file.close()
+
+    app.logger.info(
+        "Launched initial market-data refresh for security %s (pid %s)",
+        security_id,
+        process.pid,
+    )
+
 
 def create_app():
     app = Flask(__name__)
@@ -857,7 +902,19 @@ def create_app():
                     )
                     security["account_security_id"] = cursor.fetchone()["id"]
                     security["classification_id"] = classification_id
-                    return jsonify(_json_safe(security)), 201
+
+            # The database connection context has exited successfully here,
+            # so the security transaction is committed before refresh starts.
+            if instrument_type in {"STOCK", "ETF", "MUTUAL_FUND"}:
+                try:
+                    _launch_initial_market_data_refresh(app, security_id)
+                except Exception:
+                    app.logger.exception(
+                        "Could not launch initial market-data refresh for security %s",
+                        security_id,
+                    )
+
+            return jsonify(_json_safe(security)), 201
 
         except PsycopgError as error:
             app.logger.exception("Failed to create security")
