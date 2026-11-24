@@ -170,6 +170,21 @@ class MarketDataServiceTests(unittest.TestCase):
         args = self.yahoo.get_history.call_args
         self.assertEqual(args.args[0], "RELIANCE.NS")
 
+    def test_zerodha_history_adds_ns_for_unsuffixed_symbol(self):
+        security = self.zerodha_security(
+            symbol="ITC",
+            broker_symbol="ITC",
+        )
+        self.nse.get_history.side_effect = MarketDataError("NSE offline")
+        self.yahoo.get_history.return_value = [self.sample_bar()]
+
+        self.service.refresh_history_result(security, date(2026, 10, 1))
+
+        self.assertEqual(
+            self.yahoo.get_history.call_args.args[0],
+            "ITC.NS",
+        )
+
     def test_zerodha_history_reports_failure_when_both_providers_fail(self):
         security = self.zerodha_security()
         self.nse.get_history.side_effect = MarketDataError("NSE offline")
@@ -210,6 +225,21 @@ class MarketDataServiceTests(unittest.TestCase):
         self.assertEqual(result.provider, "Yahoo Finance")
         self.assertIn("NSE offline", result.fallback_reason)
         self.storage.save_quote.assert_called_once_with(1, quote)
+
+    def test_zerodha_quote_adds_ns_for_unsuffixed_symbol(self):
+        security = self.zerodha_security(
+            symbol="ITC",
+            broker_symbol="ITC",
+        )
+        self.nse.get_latest_quote.side_effect = MarketDataError("NSE offline")
+        self.yahoo.get_latest_quote.return_value = self.sample_quote()
+
+        self.service.refresh_quote_result(security)
+
+        self.assertEqual(
+            self.yahoo.get_latest_quote.call_args.args[0],
+            "ITC.NS",
+        )
 
     def test_zerodha_quote_failure_preserves_existing_quote(self):
         security = self.zerodha_security()

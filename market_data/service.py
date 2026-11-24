@@ -78,6 +78,16 @@ class MarketDataService:
         return value.strip()
 
     @staticmethod
+    def _zerodha_yahoo_symbol(symbol: str) -> str:
+        """Convert an unsuffixed Zerodha symbol to its Yahoo NSE ticker."""
+        ticker = MarketDataService._symbol(
+            symbol, "Yahoo Finance fallback ticker"
+        )
+        if ticker.upper().endswith((".NS", ".BO")):
+            return ticker
+        return f"{ticker}.NS"
+
+    @staticmethod
     def _nse_series(symbol: str) -> str:
         return "GB" if symbol.upper().startswith("SGB") else "EQ"
 
@@ -97,9 +107,7 @@ class MarketDataService:
             nse_symbol = self._symbol(
                 broker_symbol or symbol, "Zerodha NSE symbol"
             )
-            yahoo_symbol = self._symbol(
-                symbol, "Yahoo Finance fallback ticker"
-            )
+            yahoo_symbol = self._zerodha_yahoo_symbol(symbol)
 
             return {
                 "provider": "NSE",
