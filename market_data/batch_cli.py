@@ -15,6 +15,8 @@ from market_data.batch import (
 )
 from market_data.service import MarketDataService
 from market_data.storage import MarketDataStorage
+from market_data.fx_service import FxRateService
+from market_data.fx_storage import FxRateStorage
 
 
 def parse_args():
@@ -45,6 +47,12 @@ def parse_args():
         type=int,
         default=None,
         help="Limit the plan to one security (used for immediate initial loads).",
+    )
+
+    parser.add_argument(
+        "--include-fx",
+        action="store_true",
+        help="Refresh USD/INR rates after the security batch.",
     )
 
     args = parser.parse_args()
@@ -98,6 +106,52 @@ def create_dependencies():
     planner = MarketDataBatchPlanner(storage)
 
     return storage, service, planner
+
+
+def create_fx_service():
+    """Create independent dependencies for FX rate storage and refresh."""
+    connection_factory = lambda: connect(
+        _database_url(),
+        row_factory=dict_row,
+    )
+
+    storage = FxRateStorage(connection_factory)
+    return FxRateService(storage)
+
+
+def run_fx_refresh():
+    """Run FX refresh independently of the security batch result."""
+    print("\nEXECUTING FX RATE REFRESH")
+    print("=" * 100)
+
+    try:
+        service = create_fx_service()
+        records = service.refresh_incremental_history()
+        latest_date = service.storage.get_latest_rate_date(
+            base_currency="USD",
+            quote_currency="INR",
+        )
+
+        print("Currency pair: USD/INR")
+        print(f"Records submitted for upsert: {records}")
+        print(f"Latest stored rate date: {latest_date or 'Unavailable'}")
+        print("FX refresh completed successfully.")
+
+    except Exception as exc:
+        print(f"FX REFRESH FAILED: {type(exc).__name__}: {exc}")
+        print("The security batch result will remain unchanged.")
+
+
+def run_optional_fx_refresh(include_fx, security_id):
+    """Run FX only for explicitly enabled, full batch executions."""
+    if not include_fx:
+        return
+
+    if security_id is not None:
+        print("\nFX refresh skipped for an individual security refresh.")
+        return
+
+    run_fx_refresh()
 
 
 def describe_provider(service, security):
@@ -203,6 +257,8 @@ def main():
         print("\
 DRY RUN ONLY - no provider requests or database writes performed.")
         print("Use --execute to perform the refresh.")
+        if args.include_fx:
+            print("FX refresh was not run because this is a dry run.")
         return 0
 
     print("\
@@ -214,6 +270,11 @@ EXECUTING BATCH REFRESH")
 
     report = runner.execute(plan)
     print_execution_report(report)
+
+    run_optional_fx_refresh(
+        include_fx=args.include_fx,
+        security_id=args.security_id,
+    )
 
     return 1 if report.failed else 0
 
